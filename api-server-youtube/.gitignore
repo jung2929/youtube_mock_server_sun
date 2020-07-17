@@ -3,3 +3,6 @@ node_modules/*
 package-lock.json
 log/*
 .DS_Store
+config/database.js
+config/jwtMiddleware.js
+config/secret.js
