@@ -88,7 +88,7 @@ exports.signUp = async function (req, res) {
             await connection.query(insertUserInfoQuery, insertUserInfoParams);
 
             await connection.commit(); // COMMIT
-            connection.release();
+            connection.c();
             return res.json({
                 isSuccess: true,
                 code: 200,
@@ -135,7 +135,7 @@ exports.signIn = async function (req, res) {
                 WHERE email = ?;
                 `;
 
-            let selectUserInfoParams = [email];
+            let selectUserInfoParams = [email];connection.release();
 
             const [userInfoRows] = await connection.query(selectUserInfoQuery, selectUserInfoParams);
 
