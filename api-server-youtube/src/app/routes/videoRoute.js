@@ -6,4 +6,5 @@ module.exports = function(app){
     // app.route('/app/signIn').post(user.signIn);
 
     app.get('/videos',video.list);
+    app.get('/watch',video.watch);
 };
