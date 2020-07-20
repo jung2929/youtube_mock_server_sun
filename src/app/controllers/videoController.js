@@ -12,8 +12,9 @@ let communityArr = [];
 exports.list = async function (req, res) {
     try {
         //parameter 예외처리
-        const page = Number(req.query.page);
-        if (!Number.isInteger(Number(page)) || page === 0) {
+        const queryPage = Number(req.query.page);
+
+        if (!Number.isInteger(Number(queryPage)) || queryPage === 0) {
             return res.json({isSuccess: false, code: 200, message: "parameter값은 0이상의 정수이여야 합니다."});
         }
 
@@ -24,6 +25,10 @@ exports.list = async function (req, res) {
         const [videoCount] = await connection.query(countVideoQuery);
         const maxListCount = videoCount[0].VideoCount;
 
+        let page = parseInt(queryPage%3);//parseInt(queryPage % parseInt((maxListCount/10)+1));
+        if(page === 0){
+            page = 3;
+        }
 
         const resultArr = {};
         // 모든 리스트 랜덤배열로 초기화
@@ -94,6 +99,7 @@ exports.list = async function (req, res) {
                                         end
                                end
                            end as CreateAt,
+                       PlayTime,
                        ThumUrl,
                        U.ProfileUrl
                 
