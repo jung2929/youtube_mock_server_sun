@@ -5,3 +5,6 @@
 {"message":"development - API Server Start At Port 3000","level":"info","timestamp":"2020-07-20 11:50:00"}
 {"message":"production - API Server Start At Port 3000","level":"info","timestamp":"2020-07-20 11:50:05"}
 {"message":"production - API Server Start At Port 3000","level":"info","timestamp":"2020-07-20 11:50:41"}
+{"message":"undefined - API Server Start At Port 3000","level":"info","timestamp":"2020-07-20 16:43:46"}
+{"message":"App - SignIn Query error\n: {\"code\":\"ER_ACCESS_DENIED_ERROR\",\"errno\":1045,\"sqlState\":\"28000\",\"sqlMessage\":\"Access denied for user 'sun'@'112.150.230.179' (using password: YES)\"}","level":"error","timestamp":"2020-07-20 16:43:51"}
+{"message":"undefined - API Server Start At Port 3000","level":"info","timestamp":"2020-07-20 16:45:41"}
