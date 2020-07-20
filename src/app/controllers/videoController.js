@@ -57,9 +57,10 @@ exports.list = async function (req, res) {
             communityArr = storyVideoRandomList;
 
 
-            const storyVideoQuery = ` select StoryVideoIdx, UserId, ThumUrl, ProfileUrl
-                                        from StoryVideo
-                                        order by field(StoryVideoIdx,?);
+            const storyVideoQuery = ` select StoryVideoIdx, StoryVideo.UserId, ThumUrl, U.ProfileUrl
+                                            from StoryVideo
+                                            left outer join User U on U.UserId = StoryVideo.UserId
+                                            order by field(StoryVideoIdx, ?);
                                      `;
 
             const [storyVideoRows] = await connection.query(storyVideoQuery, [storyVideoRandomList]);
@@ -106,27 +107,33 @@ exports.list = async function (req, res) {
         resultArr.video = videoRows;
 
         const communitySelectQuery = `select CommunityIdx,
-                                               UserId,
+                                               UserCommunity.UserId,
                                                MainText,
                                                LikesCount,
                                                DislikesCount,
                                                ImgUrl,
-                                               ProfileUrl,
+                                               U.ProfileUrl,
                                                CommentCount,
-                                               case when TIMESTAMPDIFF(SECOND , CreatedAt, CURRENT_TIMESTAMP) < 60
-                                                   then concat(TIMESTAMPDIFF(SECOND , CreatedAt, CURRENT_TIMESTAMP),'초 전')
-                                                   else case when TIMESTAMPDIFF(minute , CreatedAt, CURRENT_TIMESTAMP) < 60
-                                                       then concat(TIMESTAMPDIFF(minute , CreatedAt, CURRENT_TIMESTAMP),'분 전')
-                                                       else case when TIMESTAMPDIFF(HOUR , CreatedAt, CURRENT_TIMESTAMP) < 24
-                                                           then concat(TIMESTAMPDIFF(HOUR , CreatedAt, CURRENT_TIMESTAMP),'시간 전')
-                                                            else case when TIMESTAMPDIFF(day , CreatedAt, CURRENT_TIMESTAMP) < 30
-                                                                then concat(TIMESTAMPDIFF(day , CreatedAt, CURRENT_TIMESTAMP),'일 전')
+                                               case
+                                                   when TIMESTAMPDIFF(SECOND, UserCommunity.CreatedAt, CURRENT_TIMESTAMP) < 60
+                                                       then concat(TIMESTAMPDIFF(SECOND, UserCommunity.CreatedAt, CURRENT_TIMESTAMP), '초 전')
+                                                   else case
+                                                            when TIMESTAMPDIFF(minute, UserCommunity.CreatedAt, CURRENT_TIMESTAMP) < 60
+                                                                then concat(TIMESTAMPDIFF(minute, UserCommunity.CreatedAt, CURRENT_TIMESTAMP), '분 전')
+                                                            else case
+                                                                     when TIMESTAMPDIFF(HOUR, UserCommunity.CreatedAt, CURRENT_TIMESTAMP) < 24
+                                                                         then concat(TIMESTAMPDIFF(HOUR, UserCommunity.CreatedAt, CURRENT_TIMESTAMP), '시간 전')
+                                                                     else case
+                                                                              when TIMESTAMPDIFF(day, UserCommunity.CreatedAt, CURRENT_TIMESTAMP) < 30
+                                                                                  then concat(TIMESTAMPDIFF(day, UserCommunity.CreatedAt, CURRENT_TIMESTAMP), '일 전')
+                                                                         end
                                                                 end
-                                                           end
                                                        end
                                                    end as CreateAt
                                         from UserCommunity
-                                        where CommunityIdx = ?;`;
+                                        left outer join User U on UserCommunity.UserId = U.UserId
+                                        where CommunityIdx = ?;
+        `;
 
         const [communityRows] = await connection.query(communitySelectQuery,Number(communityArr[page % 5]));
         resultArr.community = communityRows;
@@ -142,9 +149,11 @@ exports.list = async function (req, res) {
 
         return res.json(responseData);
     } catch (err) {
-        logger.error(`App - SignIn Query error\n: ${JSON.stringify(err)}`);
+        logger.error(`App - Video Query error\n: ${JSON.stringify(err)}`);
         connection.release();
-        // TODO 여기서 response 를 클라이언트에게 보내줘야함
+
+        r
+
         return false;
     }
 };
