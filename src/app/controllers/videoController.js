@@ -1,80 +1,49 @@
 const {pool} = require('../../../config/database');
 const {logger} = require('../../../config/winston');
+const validationFunctions = require('../../../config/validationFunctions');
+const validation = new validationFunctions.validation();
+const statusFormat = require('../../../config/responseMessages');
+
 
 const jwt = require('jsonwebtoken');
 const regexEmail = require('regex-email');
 const crypto = require('crypto');
 const secret_config = require('../../../config/secret');
 
-let listOrderNumber = [];
+const {google} = require('googleapis');
+const request = require('request');
+
+const DEF_HOME_PAGE_INDEX = 1;
+let videoArr = [];
 let communityArr = [];
 
-exports.list = async function (req, res) {
+/**
+ update : 2020.07.23
+ 01.video API = 비디오 영상 10개 씩 page 조회
+ **/
+exports.video = async function(req, res){
+    const queryPage = Number(req.query.page);
+
+    if (!validation.isValidePageIndex(queryPage)){
+        return res.json(statusFormat(false,200,'parameter 값은 1이상의 정수 값이어야 합니다.'));
+    }
     try {
-        //parameter 예외처리
-        const queryPage = Number(req.query.page);
-
-        if (!Number.isInteger(Number(queryPage)) || queryPage === 0) {
-            return res.json({isSuccess: false, code: 200, message: "parameter값은 0이상의 정수이여야 합니다."});
-        }
-
         const connection = await pool.getConnection(async conn => conn);
+        try{
+            //최대 video 갯수 쿼리
+            const countVideoQuery = `select count(VideoIdx) as videoCount from Videos ;`
+            const [videoCount] = await connection.query(countVideoQuery);
+            const maxListCount = videoCount[0].videoCount;
 
-        //최대 video 갯수 쿼라
-        const countVideoQuery = `select count(VideoIdx) as VideoCount from Videos ;`
-        const [videoCount] = await connection.query(countVideoQuery);
-        const maxListCount = videoCount[0].VideoCount;
+            //무한 스크롤를 위한 처리
+            const temp = parseInt(queryPage % parseInt((maxListCount/10)+1))
+            let page = temp === 0 ? 3 : temp;
 
-        let page = parseInt(queryPage%3);//parseInt(queryPage % parseInt((maxListCount/10)+1));
-        if(page === 0){
-            page = 3;
-        }
-
-        const resultArr = {};
-        // 모든 리스트 랜덤배열로 초기화
-        if (page === 1) {
-            listOrderNumber = [];
-
-            for (let i = 0; i < maxListCount; i++) {
-                listOrderNumber[i] = i + 1
-            }
-            for (let i = 0; i < listOrderNumber.length; i++) {
-                rnum = Math.floor(Math.random() * maxListCount); //난수발생
-                temp = listOrderNumber[i];
-                listOrderNumber[i] = listOrderNumber[rnum];
-                listOrderNumber[rnum] = temp;
+            if(page === DEF_HOME_PAGE_INDEX || videoArr.length <=1 ){
+                videoArr = getRandomArr(maxListCount);
             }
 
-            //story videos random sort
-            let storyVideoRandomList = [];
-            const storyVideoCount = 5;
-
-            for (let i = 0; i < storyVideoCount; i++) {
-                storyVideoRandomList[i] = i + 1
-            }
-            for (let i = 0; i < storyVideoCount; i++) {
-                rnum = Math.floor(Math.random() * storyVideoCount); //난수발생
-                temp = storyVideoRandomList[i];
-                storyVideoRandomList[i] = storyVideoRandomList[rnum];
-                storyVideoRandomList[rnum] = temp;
-            }
-            //storyVideoRandomList communityArr 재사용
-            communityArr = storyVideoRandomList;
-
-
-            const storyVideoQuery = ` select StoryVideoIdx, StoryVideo.UserId, ThumUrl, U.ProfileUrl
-                                            from StoryVideo
-                                            left outer join User U on U.UserId = StoryVideo.UserId
-                                            order by field(StoryVideoIdx, ?);
-                                     `;
-
-            const [storyVideoRows] = await connection.query(storyVideoQuery, [storyVideoRandomList]);
-            resultArr.storyVideo = storyVideoRows
-        }
-
-
-        let responseData = {};
-        const videoListQuery = `
+            const videoListQuery = `
                 select VideoIdx,
                        Videos.UserId,
                        TitleText,
@@ -109,10 +78,94 @@ exports.list = async function (req, res) {
                 limit 10 offset ?;
                 `;
 
-        const [videoRows] = await connection.query(videoListQuery, [listOrderNumber, 10 * (page - 1)]);
-        resultArr.video = videoRows;
+            const [videoRows] = await connection.query(videoListQuery, [videoArr, 10 * (page - 1)]);
 
-        const communitySelectQuery = `select CommunityIdx,
+            let resultArr = {};
+            resultArr.video = videoRows;
+
+            let responseData = {};
+            responseData = statusFormat(true,100,'video 리스트 호출 성공');
+            responseData.result = resultArr;
+
+            console.log("/videos (get)");
+            connection.release();
+            return res.json(responseData);
+        }catch(err){
+            logger.error(`App - Story Video Query error\n: ${JSON.stringify(err)}`);
+            connection.release();
+
+            return res.json(statusFormat(false,290,'Video 정보 조회중 오류가 발생하였습니다.'));
+        }
+    } catch (err) {
+        logger.error(`App - Video connection error\n: ${JSON.stringify(err)}`);
+
+        return res.json(statusFormat(false,299,'DB connection error'));
+    }
+};
+/**
+ update : 2020.07.23
+ 02.story-video API = 스토리 비디오 영상 5개씩 조회
+ **/
+exports.story = async function (req, res){
+    try{
+        const connection = await pool.getConnection(async conn => conn);
+        try{
+            //최대 Story video 갯수 쿼리
+            const countStoryVideoQuery = `select count(StoryVideoIdx) as storyVideoCount from StoryVideo;`
+            const [storyVideoCount] = await connection.query(countStoryVideoQuery);
+            const maxListCount = storyVideoCount[0].storyVideoCount;
+            let randomStoryVideoArr = getRandomArr(maxListCount);
+
+            const storyVideoQuery = ` select StoryVideoIdx, StoryVideo.UserId, ThumUrl, U.ProfileUrl
+                                            from StoryVideo
+                                            left outer join User U on U.UserId = StoryVideo.UserId
+                                            order by field(StoryVideoIdx, ?);
+                                     `;
+
+            const [storyVideoRows] = await connection.query(storyVideoQuery, [randomStoryVideoArr]);
+
+            let resultArr = {};
+            resultArr.storyVideo = storyVideoRows;
+
+            let responseData = {};
+            responseData = statusFormat(true,100,'story video 리스트 호출 성공');
+            responseData.result = resultArr;
+
+            console.log("/story-videos (get)");
+            connection.release();
+            return res.json(responseData);
+        }catch(err){
+            logger.error(`App - Story Video Query error\n: ${JSON.stringify(err)}`);
+            connection.release();
+            return res.json(statusFormat(false,290,'Story Video 정보 조회중 오류가 발생하였습니다.'));
+        }
+    } catch (err) {
+        logger.error(`App - Story Video connection error\n: ${JSON.stringify(err)}`);
+        return res.json(statusFormat(false,299,'DB connection error'));
+    }
+};
+/**
+ update : 2020.07.23
+ 03.community = 커뮤니티 게시글 1page 당 하나씩 조회
+ **/
+exports.community = async function (req, res){
+    const queryPage = Number(req.query.page);
+    if (!validation.isValidePageIndex(queryPage)){
+        return res.json(statusFormat(false,200,'parameter 값은 1이상의 정수 값이어야 합니다.'));
+    }
+    try{
+        const connection = await pool.getConnection(async conn => conn);
+        try{
+            //최대 video 갯수 쿼리
+            const countCommunityQuery = `select count(CommunityIdx) as communityoCount from UserCommunity;`
+            const [communityCount] = await connection.query(countCommunityQuery);
+            const maxListCount = communityCount[0].communityoCount;
+
+            if(parseInt(queryPage%maxListCount)  === DEF_HOME_PAGE_INDEX || communityArr.length <= 1 ){
+                communityArr = getRandomArr(maxListCount);
+            }
+
+            const communitySelectQuery = `select CommunityIdx,
                                                UserCommunity.UserId,
                                                MainText,
                                                LikesCount,
@@ -141,32 +194,115 @@ exports.list = async function (req, res) {
                                         where CommunityIdx = ?;
         `;
 
-        const [communityRows] = await connection.query(communitySelectQuery,Number(communityArr[page % 5]));
-        resultArr.community = communityRows;
+            const [communityRows] = await connection.query(communitySelectQuery,Number(communityArr[queryPage % 5]));
 
-        responseData.isSuccess = 'true';
-        responseData.code = '100';
-        responseData.message = 'video list api 성공';
-        responseData.result = resultArr;
+            let resultArr = {};
+            resultArr.community = communityRows;
 
-        console.log("/videos (get)");
+            let responseData = {};
+            responseData = statusFormat(true,100,'community 호출 성공');
+            responseData.result = resultArr;
 
-        connection.release();
-
-        return res.json(responseData);
+            console.log("/community-posts (get)");
+            connection.release();
+            return res.json(responseData);
+        }catch(err){
+            logger.error(`App - Videos/:videoIdx Query error\n: ${JSON.stringify(err)}`);
+            connection.release();
+            return res.json(statusFormat(false,290,'community 정보 조회중 오류가 발생하였습니다.'));
+        }
     } catch (err) {
-        logger.error(`App - Video Query error\n: ${JSON.stringify(err)}`);
-        connection.release();
-
-        r
-
-        return false;
+        logger.error(`App - Community connection error\n: ${JSON.stringify(err)}`);
+        return res.json(statusFormat(false,299,'DB connection error'));
     }
 };
-
+/**
+ update : 2020.07.23
+ 04.watch = 영상 상세 조회 api
+ **/
 exports.watch = async function (req, res) {
+    const videoIdx = req.params.videoIdx;
+    if(!validation.isValidePageIndex(videoIdx)){
+        return res.json(statusFormat(false,200,'parameter 값은 1이상의 정수 값이어야 합니다.'));
+    }
+    try{
+        const connection = await pool.getConnection(async conn => conn);
+        try{
+            // db에 비디오 인덱스 존재 판별
+            const videoExistQuery = `select exists(select VideoIdx from Videos where VideoIdx = ?) as exist;`;
+            const [isExists] = await connection.query(videoExistQuery,videoIdx);
+            if(!isExists[0].exist){
+                connection.release();
+                return res.json(statusFormat(false,201,'존재하지 않는 비디오 인덱스 입니다.'))
+            }
+
+            // 비디오 상세정보 조회
+            const videoInfoQuery = `
+            select Videos.VideoIdx,
+                   Videos.UserId,
+                   U.UserIdx,
+                   TitleText,
+                   MainText,
+                   Views,
+                   LikesCount,
+                   DislikesCount,
+                   case when isnull(UL.LikeStatus) then 0 else UL.LikeStatus end as LikeStatus,
+                   ViedoUrl,
+                   U.ProfileUrl,
+                   Videos.CreatedAt
+            
+            from Videos
+                     left outer join User U on U.UserId = Videos.UserId
+                     left outer join UserLikes UL on UL.VideoIdx = Videos.VideoIdx and UL.UserIdx = ?
+            where Videos.VideoIdx = ?;
+`;
+            const [videoInfo] = await connection.query(videoInfoQuery,[0,videoIdx]);
+            let resultArr = {};
+            resultArr.videoInfo = videoInfo[0];
+
+            let responseData = statusFormat(true,100,'영상 시청 정보 조회 api 성공');
+            responseData.result = resultArr;
+
+            //todo
+            //jwt token 받았을경우에 대한 처리
+            //명세서 작성
+
+            console.log("/video/:videoIdx (get)");
+            return res.json(responseData);
+        }catch(err){
+            logger.error(`App - Videos/:videoIdx Query error\n: ${JSON.stringify(err)}`);
+            connection.release();
+            return res.json(statusFormat(false,290,'video/videoIdx 정보 조회중 오류가 발생하였습니다.'));
+        }
+    } catch (err) {
+        logger.error(`App - Videos/:videoIdx connection error\n: ${JSON.stringify(err)}`);
+        return res.json(statusFormat(false,299,'DB connection error'));
+    }
+}
+
+
+
+exports.signin = async function (req, res) {
     let responseData = {};
-    //const connection = await pool.getConnection(async conn => conn);
+
+    url = ''
+
     res.json({test:"test"});
 
+}
+
+function getRandomArr(maxListCount) {
+    let randomArr = [];
+
+    for (let i = 0; i < maxListCount; i++) {
+        randomArr[i] = i + 1
+    }
+    for (let i = 0; i < randomArr.length; i++) {
+        rnum = Math.floor(Math.random() * maxListCount); //난수발생
+        temp = randomArr[i];
+        randomArr[i] = randomArr[rnum];
+        randomArr[rnum] = temp;
+    }
+
+    return randomArr;
 }
