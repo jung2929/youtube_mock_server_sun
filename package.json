@@ -24,6 +24,7 @@
     "googleapis": "^55.0.0",
     "jsonwebtoken": "^8.5.1",
     "method-override": "^3.0.0",
+    "moment": "^2.27.0",
     "mysql2": "^2.0.0",
     "regex-email": "^1.0.2",
     "request": "^2.88.2",

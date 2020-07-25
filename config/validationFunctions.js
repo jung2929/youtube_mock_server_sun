@@ -1,13 +1,13 @@
 class validation{
     isValidePageIndex(page){
-        let isValide = true;
+        let isValid = true;
         if (!Number.isInteger(Number(page))) {
-            isValide = false;
+            isValid = false;
         }
         else if (Number(page) === 0 ){
-            isValide = false;
+            isValid = false;
         }
-        return isValide;
+        return isValid;
     }
 }
 

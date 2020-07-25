@@ -10,6 +10,7 @@ module.exports = function(app){
     app.get('/community-posts',video.community);
     app.get('/videos/:videoIdx',video.watch);
 
+
     //test api
     //app.get('/watch',video.watch);
     app.get('/login',video.signin);

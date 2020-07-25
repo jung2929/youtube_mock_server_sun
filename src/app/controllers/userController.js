@@ -6,206 +6,220 @@ const regexEmail = require('regex-email');
 const crypto = require('crypto');
 const secret_config = require('../../../config/secret');
 const request = require('request');
+const resFormat = require('../../../config/responseMessages');
 
-// const admin = require('firebase-admin');
-// const serviceAccount = require("path/to/serviceAccountKey.json");
-// admin.initializeApp({
-//     credential: admin.credential.cert(serviceAccount),
-//     databaseURL: "https://clone-e7f75.firebaseio.com"
-// });
 
-const {google} = require("googleapis");
-const admin = require("firebase-admin");
+/**
+ jwt token 용 api 테스트를 위해 임시 발급 api
+ */
+exports.login = async function (req, res){
+    //todo
+    // 구글 로그인을 통해 아이디가 검증되어있다면 토큰을 발급
+    try{
+        const connection = await pool.getConnection(async conn => conn);
+        try{
+            const getUserIdxQuery = `select UserIdx from User where UserId='sun';`
+            const [getUserIdx] = await connection.query(getUserIdxQuery);
+            const userIdx = getUserIdx[0].UserIdx;
 
-const serviceAccount = require("../../../config/serviceAccountKey.json");
-const scopes = [
-    "https://www.googleapis.com/auth/userinfo.email",
-    "https://www.googleapis.com/auth/firebase.database"
-];
-const jwtClient = new google.auth.JWT(
-    serviceAccount.client_email,
-    null,
-    serviceAccount.private_key,
-    scopes
-);
+            let token = await jwt.sign({
+                    userIdx: userIdx,
+                    userId: 'sun',
+                }, // 토큰의 내용(payload)
+                secret_config.jwtsecret, // 비밀 키
+                {
+                    expiresIn: '365d',
+                    subject: 'userInfo',
+                } // 유효 시간은 365일
+            );
+            let responseData = {};
+            responseData = resFormat(true,100,'로그인 성공');
+            responseData.result = token;
 
-admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount),
-    databaseURL: "https://clone-e7f75.firebaseio.com"
-});
+            res.json(responseData);
+        }catch(err){
+            connection.release();
+            logger.error(`App - /user login Query error\n: ${JSON.stringify(err)}`);
+            return res.json(statusFormat(false,290,'login api Query error'));
+        }
+    }catch (err) {
+        logger.error(`App - /user login connection error\n: ${JSON.stringify(err)}`);
+        return res.json(statusFormat(false,299,'login api connection error'));
+    }
+}
+
 
 /**
  update : 2019.11.01
  01.signUp API = 회원가입
  */
-// exports.signUp = async function (req, res) {
-//     const {
-//         email, password, nickname
-//     } = req.body;
-//
-//     if (!email) return res.json({isSuccess: false, code: 301, message: "이메일을 입력해주세요."});
-//     if (email.length > 30) return res.json({
-//         isSuccess: false,
-//         code: 302,
-//         message: "이메일은 30자리 미만으로 입력해주세요."
-//     });
-//
-//     if (!regexEmail.test(email)) return res.json({isSuccess: false, code: 303, message: "이메일을 형식을 정확하게 입력해주세요."});
-//
-//     if (!password) return res.json({isSuccess: false, code: 304, message: "비밀번호를 입력 해주세요."});
-//     if (password.length < 6 || password.length > 20) return res.json({
-//         isSuccess: false,
-//         code: 305,
-//         message: "비밀번호는 6~20자리를 입력해주세요."
-//     });
-//
-//     if (!nickname) return res.json({isSuccess: false, code: 306, message: "닉네임을 입력 해주세요."});
-//     if (nickname.length > 20) return res.json({
-//         isSuccess: false,
-//         code: 307,
-//         message: "닉네임은 최대 20자리를 입력해주세요."
-//     });
-//
-//     try {
-//         const connection = await pool.getConnection(async conn => conn);
-//         try {
-//             // 이메일 중복 확인
-//             const selectEmailQuery = `
-//                 SELECT email, nickname
-//                 FROM UserInfo
-//                 WHERE email = ?;
-//                 `;
-//             const selectEmailParams = [email];
-//             const [emailRows] = await connection.query(selectEmailQuery, selectEmailParams);
-//
-//             if (emailRows.length > 0) {
-//                 connection.release();
-//                 return res.json({
-//                     isSuccess: false,
-//                     code: 308,
-//                     message: "중복된 이메일입니다."
-//                 });
-//             }
-//
-//             // 닉네임 중복 확인
-//             const selectNicknameQuery = `
-//                 SELECT email, nickname
-//                 FROM UserInfo
-//                 WHERE nickname = ?;
-//                 `;
-//             const selectNicknameParams = [nickname];
-//             const [nicknameRows] = await connection.query(selectNicknameQuery, selectNicknameParams);
-//
-//             if (nicknameRows.length > 0) {
-//                 connection.release();
-//                 return res.json({
-//                     isSuccess: false,
-//                     code: 309,
-//                     message: "중복된 닉네임입니다."
-//                 });
-//             }
-//
-//             await connection.beginTransaction(); // START TRANSACTION
-//             const hashedPassword = await crypto.createHash('sha512').update(password).digest('hex');
-//
-//             const insertUserInfoQuery = `
-//                 INSERT INTO UserInfo(email, pswd, nickname)
-//                 VALUES (?, ?, ?);
-//                     `;
-//             const insertUserInfoParams = [email, hashedPassword, nickname];
-//             await connection.query(insertUserInfoQuery, insertUserInfoParams);
-//
-//             await connection.commit(); // COMMIT
-//             connection.c();
-//             return res.json({
-//                 isSuccess: true,
-//                 code: 200,
-//                 message: "회원가입 성공"
-//             });
-//         } catch (err) {
-//             await connection.rollback(); // ROLLBACK
-//             connection.release();
-//             logger.error(`App - SignUp Query error\n: ${err.message}`);
-//             return res.status(500).send(`Error: ${err.message}`);
-//         }
-//     } catch (err) {
-//         logger.error(`App - SignUp DB Connection error\n: ${err.message}`);
-//         return res.status(500).send(`Error: ${err.message}`);
-//     }
-// };
+exports.signUp = async function (req, res) {
+    const {
+        email, password, nickname
+    } = req.body;
 
+    if (!email) return res.json({isSuccess: false, code: 301, message: "이메일을 입력해주세요."});
+    if (email.length > 30) return res.json({
+        isSuccess: false,
+        code: 302,
+        message: "이메일은 30자리 미만으로 입력해주세요."
+    });
+
+    if (!regexEmail.test(email)) return res.json({isSuccess: false, code: 303, message: "이메일을 형식을 정확하게 입력해주세요."});
+
+    if (!password) return res.json({isSuccess: false, code: 304, message: "비밀번호를 입력 해주세요."});
+    if (password.length < 6 || password.length > 20) return res.json({
+        isSuccess: false,
+        code: 305,
+        message: "비밀번호는 6~20자리를 입력해주세요."
+    });
+
+    if (!nickname) return res.json({isSuccess: false, code: 306, message: "닉네임을 입력 해주세요."});
+    if (nickname.length > 20) return res.json({
+        isSuccess: false,
+        code: 307,
+        message: "닉네임은 최대 20자리를 입력해주세요."
+    });
+
+    try {
+        const connection = await pool.getConnection(async conn => conn);
+        try {
+            // 이메일 중복 확인
+            const selectEmailQuery = `
+                SELECT email, nickname
+                FROM UserInfo
+                WHERE email = ?;
+                `;
+            const selectEmailParams = [email];
+            const [emailRows] = await connection.query(selectEmailQuery, selectEmailParams);
+
+            if (emailRows.length > 0) {
+                connection.release();
+                return res.json({
+                    isSuccess: false,
+                    code: 308,
+                    message: "중복된 이메일입니다."
+                });
+            }
+
+            // 닉네임 중복 확인
+            const selectNicknameQuery = `
+                SELECT email, nickname
+                FROM UserInfo
+                WHERE nickname = ?;
+                `;
+            const selectNicknameParams = [nickname];
+            const [nicknameRows] = await connection.query(selectNicknameQuery, selectNicknameParams);
+
+            if (nicknameRows.length > 0) {
+                connection.release();
+                return res.json({
+                    isSuccess: false,
+                    code: 309,
+                    message: "중복된 닉네임입니다."
+                });
+            }
+
+            await connection.beginTransaction(); // START TRANSACTION
+            const hashedPassword = await crypto.createHash('sha512').update(password).digest('hex');
+
+            const insertUserInfoQuery = `
+                INSERT INTO UserInfo(email, pswd, nickname)
+                VALUES (?, ?, ?);
+                    `;
+            const insertUserInfoParams = [email, hashedPassword, nickname];
+            await connection.query(insertUserInfoQuery, insertUserInfoParams);
+
+            await connection.commit(); // COMMIT
+            connection.c();
+            return res.json({
+                isSuccess: true,
+                code: 200,
+                message: "회원가입 성공"
+            });
+        } catch (err) {
+            await connection.rollback(); // ROLLBACK
+            connection.release();
+            logger.error(`App - SignUp Query error\n: ${err.message}`);
+            return res.status(500).send(`Error: ${err.message}`);
+        }
+    } catch (err) {
+        logger.error(`App - SignUp DB Connection error\n: ${err.message}`);
+        return res.status(500).send(`Error: ${err.message}`);
+    }
+};
 
 /**
  update : 2020.07.23
  02.signIn API = fire base 로그인
  **/
-exports.signUp = async function( req, res ){
-    // console.log('/app/signup (post)');
-    // const accessToken = req.headers['x-access-token'];
-    // const url = 'https://www.googleapis.com/youtube/v3/channels';
-    // let responseData = {};
-    //
-    //  request({
-    //     url: url,
-    //     method: 'GET',
-    //     qs:{
-    //         part:'id',
-    //         mine:true
-    //     },
-    //     headers:{
-    //             'Authorization': 'Bearer ' + accessToken
-    //         }
-    //     },function (err,responese,body) {
-    //         if(err) throw err;
-    //         responseData = JSON.parse(body);
-    //         if(!responseData.items){
-    //             res.json({isSuccess : false,code:'200',message:'유효하지 않은 토큰입니다. Request had invalid authentication credentials.'});
-    //         }
-    //         else{
-    //
-    //             res.json({isSuccess : true,code:'100',message:'회원 가입'});
-    //         }
-    //     });
-
-
-    const idToken = req.headers['x-access-token'];
-
-    //id 토큰 유효성 검사 코드
-    let checkRevoked = true;
-    admin.auth().verifyIdToken(idToken, checkRevoked)
-        .then(payload => {
-            // Token is valid.
-            console.log("s");
-        })
-        .catch(error => {
-            if (error.code == 'auth/id-token-revoked') {
-                // Token has been revoked. Inform the user to reauthenticate or signOut() the user.
-                console.log("revokde");
-            } else {
-                console.log("invalid");
-                // Token is invalid.
-            }
-        });
-
-    //  id 토큰 디코딩 코
-    // console.log(idToken);
-    //
-    // admin.auth().verifyIdToken(idToken)
-    //     .then(function(decodedToken) {
-    //         let uid = decodedToken.uid;
-    //         console.log(uid);
-    //         res.json({test:'test'});
-    //
-    //         // ...
-    //     }).catch(function(error) {
-    //     // Handle error
-    // });
-
-
-
-    res.json({test: 'test'});
-
-}
+// exports.signUp = async function( req, res ){
+//     // console.log('/app/signup (post)');
+//     // const accessToken = req.headers['x-access-token'];
+//     // const url = 'https://www.googleapis.com/youtube/v3/channels';
+//     // let responseData = {};
+//     //
+//     //  request({
+//     //     url: url,
+//     //     method: 'GET',
+//     //     qs:{
+//     //         part:'id',
+//     //         mine:true
+//     //     },
+//     //     headers:{
+//     //             'Authorization': 'Bearer ' + accessToken
+//     //         }
+//     //     },function (err,responese,body) {
+//     //         if(err) throw err;
+//     //         responseData = JSON.parse(body);
+//     //         if(!responseData.items){
+//     //             res.json({isSuccess : false,code:'200',message:'유효하지 않은 토큰입니다. Request had invalid authentication credentials.'});
+//     //         }
+//     //         else{
+//     //
+//     //             res.json({isSuccess : true,code:'100',message:'회원 가입'});
+//     //         }
+//     //     });
+//
+//
+//     const idToken = req.headers['x-access-token'];
+//
+//     //id 토큰 유효성 검사 코드
+//     let checkRevoked = true;
+//     admin.auth().verifyIdToken(idToken, checkRevoked)
+//         .then(payload => {
+//             // Token is valid.
+//             console.log("s");
+//         })
+//         .catch(error => {
+//             if (error.code == 'auth/id-token-revoked') {
+//                 // Token has been revoked. Inform the user to reauthenticate or signOut() the user.
+//                 console.log("revokde");
+//             } else {
+//                 console.log("invalid");
+//                 // Token is invalid.
+//             }
+//         });
+//
+//     //  id 토큰 디코딩 코
+//     // console.log(idToken);
+//     //
+//     // admin.auth().verifyIdToken(idToken)
+//     //     .then(function(decodedToken) {
+//     //         let uid = decodedToken.uid;
+//     //         console.log(uid);
+//     //         res.json({test:'test'});
+//     //
+//     //         // ...
+//     //     }).catch(function(error) {
+//     //     // Handle error
+//     // });
+//
+//
+//
+//     res.json({test: 'test'});
+//
+// }
 
 /**
  update : 2019.11.01
