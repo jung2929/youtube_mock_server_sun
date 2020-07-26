@@ -328,7 +328,7 @@ exports.getWatch = async function (req, res) {
 exports.updateLikes = async function (req, res){
     const videoIdx = parseInt(req.params.videoIdx);
     const jwtoken = req.headers['x-access-token'];
-    const likeStatus = req.body.likeStatus;
+    const likeStatus = parseInt(req.body.likeStatus);
     // likeStatus 정의
     const DEF_NOT_SET_STATUS = 0;
     const DEF_LIKE_STATUS = 1;
@@ -340,12 +340,13 @@ exports.updateLikes = async function (req, res){
     if (!jwtoken){
         return res.json(resFormat(false, 201, '로그인후 사용가능한 기능입니다.'));
     }
-    if (likeStatus<0 && likeStatus>2){
+    if (likeStatus<0 || likeStatus>2){
         return res.json(resFormat(false, 202, '좋아요 설정값은 0~2 사이의 값입니다.'));
     }
     try{
         const connection = await pool.getConnection(async conn => conn);
         try{
+            console.log('Patch Video Likes Body data = '+likeStatus );
             // db에 비디오 인덱스 존재 판별
             const videoExistQuery = `select exists(select VideoIdx from Videos where VideoIdx = ?) as exist;`;
             const [isExists] = await connection.query(videoExistQuery, videoIdx);

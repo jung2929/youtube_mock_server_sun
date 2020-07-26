@@ -85,8 +85,75 @@ exports.updateSubscribe = async function (req, res){
 };
 /**
  update : 2020.07.26
- 18.video relate with subscribe API = 구독한 유저의 비디오 조회
+ 18.video relate with subscribe API = 구독한 유저의 데이터 조회
  **/
+exports.getSubscribeData = async function (req, res){
+    const dataType = req.query.type; //todo videos,profile 등 추가될예정
+    const DEF_SUBSCRIBE_DATA_TYPE_LIST = ["videos","profile"];
+    const jwtoken = req.headers['x-access-token'];
+    const page = req.query.page;
+
+    if (!validation.isValidePageIndex(page)) {
+        return res.json(resFormat(false, 200, 'parameter 값은 1이상의 정수 값이어야 합니다.'));
+    }
+    //유효한 필터링 검증
+    if(!(DEF_SUBSCRIBE_DATA_TYPE_LIST.includes(dataType))){
+        return res.json(resFormat(false,201,'지원하지 않는 필터링입니다.'));
+    }
+    if(!jwtoken){
+        return res.json(resFormat(false, 202, '로그인후 사용가능한 기능입니다.'));
+    }
+    try{
+        const connection = await pool.getConnection(async conn => conn);
+        try{
+            // 유효한 토큰 검사
+            let jwtDecode = jwt.verify(jwtoken, secret_config.jwtsecret);
+            const userIdx = jwtDecode.userIdx;
+            const userId = jwtDecode.userId;
+            const checkTokenValideQuery = `select exists(select UserIdx from User where UserIdx = ? and UserId = ?) as exist;`;
+            const [isValidUser] = await connection.query(checkTokenValideQuery, [userIdx, userId]);
+            if (!isValidUser[0].exist) {
+                connection.release();
+                return res.json(resFormat(false, 203, '유효하지않는 토큰입니다.'));
+            }
+            //todo 필터링 작업 마져 다할 필요가 있
+            // 필터링
+            let responseData = resFormat(true,100,'구독 정보 조회 성공');
+            switch (dataType) {
+                case DEF_SUBSCRIBE_DATA_TYPE_LIST[0]://videos
+                    const getSubscribeChannelVideoQuery = `select ChannelUserIdx,
+                                                                   U.UserId,
+                                                                   V.TitleText,
+                                                                   V.Views,
+                                                                   V.CreatedAt,
+                                                                   V.ThumUrl,
+                                                                   U.ProfileUrl
+                                                            from UserSubscribes
+                                                                     left outer join User U on UserSubscribes.ChannelUserIdx = U.UserIdx
+                                                                     left outer join Videos V on U.UserId = V.UserId
+                                                            where UserSubscribes.UserIdx = ?
+                                                            order by V.CreatedAt desc
+                                                            limit 10 offset ?;
+                                                            `;
+                    const [subscribeChannelVideos] = await connection.query(getSubscribeChannelVideoQuery,[userIdx,parseInt((page-1)*10)]);
+                    responseData.result = subscribeChannelVideos;
+                    break;
+                case DEF_SUBSCRIBE_DATA_TYPE_LIST[1]://profile음
+                    break;
+            }
+
+            connection.release();
+            return res.json(responseData);
+        }catch (err){
+            logger.error(`App -  get users/subscribe Query error\n: ${JSON.stringify(err)}`);
+            connection.release();
+            return res.json(resFormat(false, 290, '구독 정보 조 query 중 오류가 발생하였습니다.'));
+        }
+    }catch(err){
+        logger.error(`App - get users/subscribe connection error\n: ${JSON.stringify(err)}`);
+        return res.json(resFormat(false, 299, 'DB connection error'));
+    }
+};
 
 
 
