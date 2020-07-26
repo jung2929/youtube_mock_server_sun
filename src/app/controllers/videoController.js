@@ -20,7 +20,7 @@ let communityArr = [];
  update : 2020.07.23
  01.video API = 비디오 영상 10개 씩 page 조회
  **/
-exports.video = async function (req, res) {
+exports.getVideo = async function (req, res) {
     const queryPage = Number(req.query.page);
 
     if (!validation.isValidePageIndex(queryPage)) {
@@ -104,7 +104,7 @@ exports.video = async function (req, res) {
  update : 2020.07.23
  02.story-video API = 스토리 비디오 영상 5개씩 조회
  **/
-exports.story = async function (req, res) {
+exports.getStory = async function (req, res) {
     try {
         const connection = await pool.getConnection(async conn => conn);
         try {
@@ -146,7 +146,7 @@ exports.story = async function (req, res) {
  update : 2020.07.23
  03.community = 커뮤니티 게시글 1page 당 하나씩 조회
  **/
-exports.community = async function (req, res) {
+exports.getCommunity = async function (req, res) {
     const queryPage = Number(req.query.page);
     if (!validation.isValidePageIndex(queryPage)) {
         return res.json(resFormat(false, 200, 'parameter 값은 1이상의 정수 값이어야 합니다.'));
@@ -218,7 +218,7 @@ exports.community = async function (req, res) {
  update : 2020.07.24
  04.watch = 영상 상세 조회 api
  **/
-exports.watch = async function (req, res) {
+exports.getWatch = async function (req, res) {
     const videoIdx = req.params.videoIdx;
     if (!validation.isValidePageIndex(videoIdx)) {
         return res.json(resFormat(false, 200, 'parameter 값은 1이상의 정수 값이어야 합니다.'));
@@ -289,6 +289,7 @@ exports.watch = async function (req, res) {
                    LikesCount,
                    DislikesCount,
                    U.SubscribeCount,
+                   CommentsCount,
                    case when isnull(UL.LikeStatus) then 0 else UL.LikeStatus end as LikeStatus,
                    ViedoUrl,
                    U.ProfileUrl,
@@ -322,6 +323,129 @@ exports.watch = async function (req, res) {
         return res.json(resFormat(false, 299, 'DB connection error'));
     }
 };
+/**
+ update : 2020.07.25
+ 13.watch = 영상 좋아요 설정 api
+ **/
+exports.updateLikes = async function (req, res){
+    const videoIdx = parseInt(req.params.videoIdx);
+    const jwtoken = req.headers['x-access-token'];
+    const likeStatus = req.body.likeStatus;
+    // likeStatus 정의
+    const DEF_NOT_SET_STATUS = 0;
+    const DEF_LIKE_STATUS = 1;
+    const DEF_DISLIKE_STATUS = 2;
+
+    if (!validation.isValidePageIndex(videoIdx)) {
+        return res.json(resFormat(false, 200, 'parameter 값은 1이상의 정수 값이어야 합니다.'));
+    }
+    if (!jwtoken){
+        return res.json(resFormat(false, 201, '로그인후 사용가능한 기능입니다.'));
+    }
+    if (likeStatus<0 && likeStatus>2){
+        return res.json(resFormat(false, 202, '좋아요 설정값은 0~2 사이의 값입니다.'));
+    }
+    try{
+        const connection = await pool.getConnection(async conn => conn);
+        try{
+            // db에 비디오 인덱스 존재 판별
+            const videoExistQuery = `select exists(select VideoIdx from Videos where VideoIdx = ?) as exist;`;
+            const [isExists] = await connection.query(videoExistQuery, videoIdx);
+            if (!isExists[0].exist) {
+                connection.release();
+                return res.json(resFormat(false, 203, '존재하지 않는 비디오 인덱스 입니다.'))
+            }
+            // 유효한 토큰 검사
+            let jwtDecode = jwt.verify(jwtoken, secret_config.jwtsecret);
+            const userIdx = jwtDecode.userIdx;
+            const userId = jwtDecode.userId;
+            const checkTokenValideQuery = `select exists(select UserIdx from User where UserIdx = ? and UserId = ?) as exist;`;
+            const [isValidUser] = await connection.query(checkTokenValideQuery, [userIdx, userId]);
+            if (!isValidUser) {
+                connection.release();
+                return res.json(resFormat(false, 204, '유효하지않는 토큰입니다.'));
+            }
+            const checkExistLikeHistoryQuery = `select exists(select UserLikesIdx from UserLikes where UserIdx = ? and VideoIdx = ? and IsDeleted = 'N') as exist;`;
+            const [isExistLikeHistory] = await connection.query(checkExistLikeHistoryQuery,[userIdx,videoIdx]);
+
+            //존재 하지 않으면 insert 하면서 기록
+            //Like Status 값에 따라서 해당 영상의 좋아요 갯수 +1,-1 설정
+            //존재 한다면 update
+            if(!isExistLikeHistory[0].exist){
+                const insertLikeStatusQuery = `insert into UserLikes(UserIdx, VideoIdx, LikeStatus) values (?,?,?);`;
+
+                let likeCount = 0;
+                let dislikeCount = 0;
+                switch (likeStatus) {
+                    case DEF_LIKE_STATUS:
+                        likeCount = 1;
+                        break;
+                    case DEF_DISLIKE_STATUS:
+                        dislikeCount = 1;
+                        break;
+                }
+                const updateVideoLikeCountQuery = 'UPDATE Videos SET LikesCount= LikesCount+'+likeCount+', DislikesCount=DislikesCount+'+dislikeCount+' WHERE VideoIdx = ?;'
+                //insert UserLike history
+                await connection.beginTransaction();
+                await connection.query(insertLikeStatusQuery,[userIdx,videoIdx,likeStatus]);
+                await connection.query(updateVideoLikeCountQuery,videoIdx);
+                await connection.commit();
+            } else{
+                //이전값과 비교하여 계산할 필요가 있음. ex) like -> dislike 일 경우 likecount -1 , dislikecount +1
+                const getPreviousLikeStatusQuery = `select LikeStatus from UserLikes where UserIdx = ? and VideoIdx = ?;`;
+                const [previousLikeStatus] = await connection.query(getPreviousLikeStatusQuery,[userIdx,videoIdx]);
+
+                //변경 값이 없음
+                if(previousLikeStatus[0].LikeStatus === likeStatus){
+                    return res.json(resFormat(false,205,"LikeStatus의 변경값이 없습니다."))
+                }
+
+                // 좋아요 변동에 따른 갯수 변화 처리 인데... 더 좋은 방법이 있을것이다.....
+                let likeCount = 0;
+                let dislikeCount = 0;
+                switch (previousLikeStatus[0].LikeStatus) {
+                    case DEF_NOT_SET_STATUS://0
+                        if(likeStatus === 1)likeCount = 1;
+                        else if(likeStatus === 2)dislikeCount = 1;
+                        break;
+                    case DEF_LIKE_STATUS://1
+                        if(likeStatus === 0)likeCount = -1;
+                        else if(likeStatus === 2){
+                            likeCount = -1;
+                            dislikeCount = 1;
+                        }
+                        break;
+                    case DEF_DISLIKE_STATUS://2
+                        if(likeStatus === 0)dislikeCount = -1;
+                        else if(likeStatus === 1){
+                            likeCount = 1;
+                            dislikeCount = -1;
+                        }
+                        break;
+                }
+                let updateVideoLikeCountQuery = 'UPDATE Videos SET LikesCount= LikesCount+'+likeCount+', DislikesCount=DislikesCount+'+dislikeCount+' WHERE VideoIdx = ?;';
+                const updateLikeStatusQuery = `update UserLikes set LikeStatus = ? where UserIdx = ? and VideoIdx = ?;`;
+                await connection.beginTransaction();
+                await connection.query(updateVideoLikeCountQuery,videoIdx);
+                await connection.query(updateLikeStatusQuery,[likeStatus,userIdx,videoIdx]);
+                await connection.commit();
+            }
+
+            let responseData = resFormat(true,100,'좋아요 상태 업데이트');
+            responseData.result = {userIdx:userIdx,videoIdx:videoIdx,likeStatus:likeStatus};
+            return res.json(responseData);
+        }catch (err) {
+            logger.error(`App - Videos/:videoIdx/likes Query error\n: ${JSON.stringify(err)}`);
+            connection.release();
+            return res.json(resFormat(false, 290, 'Like 정보 query 중 오류가 발생하였습니다.'));
+        }
+    }catch (err) {
+        logger.error(`App - Videos/:videoIdx/likes connection error\n: ${JSON.stringify(err)}`);
+        return res.json(resFormat(false, 299, 'DB connection error'));
+    }
+
+};
+
 
 
 

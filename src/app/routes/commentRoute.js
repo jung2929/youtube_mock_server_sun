@@ -6,4 +6,6 @@ module.exports = function(app){
     app.route('/videos/:videoIdx/comments').post(comment.postComment);
     app.get('/videos/:videoIdx/comments',comment.commentList);
     app.patch('/videos/:videoIdx/comments',comment.updateComment);
+    app.delete('/videos/:videoIdx/comments',comment.daleteComment);
+
 };
