@@ -1,5 +1,7 @@
 const {pool} = require('../../../config/database');
 const {logger} = require('../../../config/winston');
+const validationFunctions = require('../../../config/validationFunctions');
+const validation = new validationFunctions.validation();
 
 const jwt = require('jsonwebtoken');
 const regexEmail = require('regex-email');
@@ -10,11 +12,15 @@ const resFormat = require('../../../config/responseMessages');
 
 
 //PATCH	/user/subscribe	채널 구독 갱신
+/**
+ update : 2020.07.26
+ 17.subscribe API = 구독 상태 갱신
+ **/
 exports.updateSubscribe = async function (req, res){
-    const channelUserIdx = parseInt(req.params.userIdx);
+    const channelUserIdx = parseInt(req.body.channelUserIdx);
     const jwtoken = req.headers['x-access-token'];
 
-    if (!validation.isValidePageIndex(userIdx)) {
+    if (!validation.isValidePageIndex(channelUserIdx)) {
         return res.json(resFormat(false, 200, 'parameter 값은 1이상의 정수 값이어야 합니다.'));
     }
     if (!jwtoken){
@@ -23,9 +29,9 @@ exports.updateSubscribe = async function (req, res){
     try{
         const connection = await pool.getConnection(async conn => conn);
         try {
-            // db에 비디오 인덱스 존재 판별
+            // db에 유저 인덱스 존재 판별
             const userExistQuery = `select exists(select UserIdx from User where UserIdx = ?) as exist;`;
-            const [isExists] = await connection.query(userExistQuery, userIdx);
+            const [isExists] = await connection.query(userExistQuery, channelUserIdx);
             if (!isExists[0].exist) {
                 connection.release();
                 return res.json(resFormat(false, 202, '존재하지 않는 유저 인덱스 입니다.'))
@@ -57,6 +63,16 @@ exports.updateSubscribe = async function (req, res){
             }
             await connection.commit();
 
+            //현재 구독 상태 반환
+            const getSubscribeStatus = `select IsDeleted from UserSubscribes where UserIdx = ? and ChannelUserIdx=?;`;
+            const [subscribeStatusRows] = await connection.query(getSubscribeStatus,[userIdx,channelUserIdx]);
+            let subscribeStatus = subscribeStatusRows[0].IsDeleted === 'N';
+
+            let responseData = resFormat(true,100, '구독 갱신 완료');
+            responseData.result = {userIdx:userIdx,channelUserIdx:channelUserIdx,SubscribeStatus:subscribeStatus};
+
+            connection.release();
+            return res.json(responseData);
         } catch(err){
             logger.error(`App - user/subscribe Query error\n: ${JSON.stringify(err)}`);
             connection.release();
@@ -67,6 +83,10 @@ exports.updateSubscribe = async function (req, res){
         return res.json(resFormat(false, 299, 'DB connection error'));
     }
 };
+/**
+ update : 2020.07.26
+ 18.video relate with subscribe API = 구독한 유저의 비디오 조회
+ **/
 
 
 
@@ -98,6 +118,7 @@ exports.login = async function (req, res){
             responseData = resFormat(true,100,'로그인 성공');
             responseData.result = token;
 
+            connection.release();
             res.json(responseData);
         }catch(err){
             connection.release();

@@ -60,6 +60,8 @@ exports.postComment = async function (req, res) {
             let responseData = {};
             responseData = resFormat(true, 100, '댓글 작성 api 성공');
             responseData.result = {userIdx: userIdx, videoIdx: videoIdx, commentsText: commentsText};
+
+            connection.release();
             return res.json(responseData);
         } catch (err) {
             logger.error(`App - Post Comments Query error\n: ${JSON.stringify(err)}`);
@@ -106,6 +108,7 @@ exports.getComment = async function (req, res) {
             responseData = resFormat(true,100,'댓글 조회 api 성공');
             responseData.result = CommentsArr;
 
+            connection.release();
             res.json(responseData);
         } catch (err) {
             logger.error(`App - Get Comments Query error\n: ${JSON.stringify(err)}`);
@@ -167,6 +170,8 @@ exports.updateComment = async function (req, res) {
             let responseData = {};
             responseData = resFormat(true, 100, '댓글 수정 api 성공');
             responseData.result = {userIdx: userIdx, videoIdx: videoIdx, commentsIdx:commentsIdx ,commentsText: commentsText};
+
+            connection.release();
             return res.json(responseData);
         } catch (err) {
             logger.error(`App - Update Comments Query error\n: ${JSON.stringify(err)}`);
@@ -226,6 +231,8 @@ exports.daleteComment = async function (req, res) {
             let responseData = {};
             responseData = resFormat(true, 100, '댓글 삭제 api 성공');
             responseData.result = {userIdx: userIdx, videoIdx: videoIdx, commentsIdx:commentsIdx ,IsDeleted: 'Y'};
+
+            connection.release();
             return res.json(responseData);
         }catch (err) {
             logger.error(`App - Delete Comments Query error\n: ${JSON.stringify(err)}`);
@@ -300,6 +307,8 @@ exports.postReply = async function (req ,res) {
             let responseData = {};
             responseData = resFormat(true, 100, '답글 작성 api 성공');
             responseData.result = {userIdx: userIdx, commentsIdx: commentsIdx, videoIdx:videoIdx,replyText: replyText};
+
+            connection.release();
             return res.json(responseData);
         }catch(err){
             logger.error(`App - Post Reply Query error\n: ${JSON.stringify(err)}`);
@@ -356,6 +365,7 @@ exports.getReply = async function (req, res) {
             responseData = resFormat(true,100,'답글 조회 api 성공');
             responseData.result = CommentsArr;
 
+            connection.release();
             res.json(responseData);
         } catch (err) {
             logger.error(`App - Get Comments Reply Query error\n: ${JSON.stringify(err)}`);

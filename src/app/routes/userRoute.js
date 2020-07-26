@@ -3,11 +3,11 @@ module.exports = function(app){
     const jwtMiddleware = require('../../../config/jwtMiddleware');
 
 
-    app.patch('/user/subscribe',user.updateSubscribe);
+    app.patch('/users/subscribe',user.updateSubscribe);
 
 
     //test api for login
-    app.route('/user').post(user.login);
+    app.route('/users').post(user.login);
 
 
     //example

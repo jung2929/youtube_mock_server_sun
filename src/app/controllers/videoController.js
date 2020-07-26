@@ -240,6 +240,7 @@ exports.getWatch = async function (req, res) {
 
             //jwt 가 있을시 히스토리 테이블에 insert
             if (jwtoken) {
+                console.log('/video/:videoIdx (get) with JWToken');
                 let jwtDecode = jwt.verify(jwtoken, secret_config.jwtsecret);
                 const userIdx = jwtDecode.userIdx;
                 const userId = jwtDecode.userId;
@@ -277,7 +278,6 @@ exports.getWatch = async function (req, res) {
             await connection.query(addVideoViewsQuery,videoIdx);
             await connection.commit();
 
-
             // 비디오 상세정보 조회
             const videoInfoQuery = `
             select Videos.VideoIdx,
@@ -291,7 +291,7 @@ exports.getWatch = async function (req, res) {
                    U.SubscribeCount,
                    CommentsCount,
                    case when isnull(UL.LikeStatus) then 0 else UL.LikeStatus end as LikeStatus,
-                   ViedoUrl,
+                   VideoUrl,
                    U.ProfileUrl,
                    Videos.CreatedAt
             
@@ -307,10 +307,8 @@ exports.getWatch = async function (req, res) {
             let responseData = resFormat(true, 100, '영상 시청 정보 조회 api 성공');
             responseData.result = resultArr;
 
-            //todo
-            // likestatus는
-
             console.log("/video/:videoIdx (get)");
+            connection.release();
             return res.json(responseData);
         } catch (err) {
             await connection.rollback(); // ROLLBACK
@@ -433,6 +431,7 @@ exports.updateLikes = async function (req, res){
 
             let responseData = resFormat(true,100,'좋아요 상태 업데이트');
             responseData.result = {userIdx:userIdx,videoIdx:videoIdx,likeStatus:likeStatus};
+            connection.release();
             return res.json(responseData);
         }catch (err) {
             logger.error(`App - Videos/:videoIdx/likes Query error\n: ${JSON.stringify(err)}`);
