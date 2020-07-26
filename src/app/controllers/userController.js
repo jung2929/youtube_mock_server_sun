@@ -9,6 +9,14 @@ const request = require('request');
 const resFormat = require('../../../config/responseMessages');
 
 
+
+exports.updateSubscribe = async function (req, res){
+
+};
+
+
+
+
 /**
  jwt token 용 api 테스트를 위해 임시 발급 api
  */

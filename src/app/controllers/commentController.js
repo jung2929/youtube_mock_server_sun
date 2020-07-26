@@ -8,6 +8,7 @@ const jwt = require('jsonwebtoken');
 const secret_config = require('../../../config/secret');
 const moment = require('moment');
 
+//댓글
 /**
  update : 2020.07.24
  06.comment post api = (jwt) 댓글 작성
@@ -74,7 +75,7 @@ exports.postComment = async function (req, res) {
  update : 2020.07.24
  05.comment get API = 댓글 10개 씩 page 조회
  **/
-exports.commentList = async function (req, res) {
+exports.getComment = async function (req, res) {
     const videoIdx = req.params.videoIdx;
     const page = parseInt(req.query.page);
     if (!(validation.isValidePageIndex(videoIdx) && validation.isValidePageIndex(page))) {
@@ -233,6 +234,136 @@ exports.daleteComment = async function (req, res) {
         }
     }catch (err) {
         logger.error(`App - Delete Comments connection error\n: ${JSON.stringify(err)}`);
+        return res.json(resFormat(false, 299, 'DB connection error'));
+    }
+};
+
+//답글
+//app.route('/videos/:videoIdx/comments/:commentsIdx').post(comment.postReply);
+
+/**
+ update : 2020.07.26
+ 10.reply post API = (jwt) 댓글의 답글 작성
+ **/
+exports.postReply = async function (req ,res) {
+    const videoIdx = parseInt(req.params.videoIdx);
+    const commentsIdx = parseInt(req.params.commentsIdx);
+    const jwtoken = req.headers['x-access-token'];
+    const replyText = req.body.replyText;
+
+    if(!(validation.isValidePageIndex(videoIdx) && validation.isValidePageIndex(commentsIdx))){
+        return res.json(resFormat(false,200,'파라미터 값은 1이상의 정수이어야합니다.'));
+    }
+    if(!jwtoken){
+        return res.json(resFormat(false,201,'로그인 후 사용이 가능한 기능입니다.'));
+    }
+    if(!replyText){
+        return res.json(resFormat(false,202,'답글의 작성하여 주세요.'));
+    }
+    try{
+        const connection = await pool.getConnection(async conn => conn);
+        try{
+            // 비디오 인덱스 존재 유무
+            const checkVideoIdxQuery = `select exists(select VideoIdx from Videos where VideoIdx = ?) as exist;`;
+            const [isValidIdx] = await connection.query(checkVideoIdxQuery, videoIdx);
+            if (!isValidIdx[0].exist) {
+                connection.release();
+                return res.json(resFormat(false, 203, '존재하지 않는 비디오 인덱스 입니다.'));
+            }
+
+            // 댓글 인덱스 존재 유무
+            const checkCommentsIdxQuery = `select exists(select CommentsIdx from Comments where CommentsIdx = ?) as exist;`;
+            const [isValidCommentsIdx] = await connection.query(checkCommentsIdxQuery,commentsIdx);
+            if(!isValidCommentsIdx[0].exist){
+                connection.release();
+                return res.json(resFormat(false,204,'존재하지 않는 댓글 인덱스 입니다.'));
+            }
+
+            // 유효한 토큰 검사
+            let jwtDecode = jwt.verify(jwtoken, secret_config.jwtsecret);
+            const userIdx = jwtDecode.userIdx;
+            const userId = jwtDecode.userId;
+            const checkTokenValideQuery = `select exists(select UserIdx from User where UserIdx = ? and UserId = ?) as exist;`;
+            const [isValidUser] = await connection.query(checkTokenValideQuery, [userIdx, userId]);
+            if (!isValidUser) {
+                connection.release();
+                return res.json(resFormat(false, 205, '유효하지않는 토큰입니다.'));
+            }
+
+            const addReplyCountQuery = `update Comments set CmtReplyCount = CmtReplyCount + 1 where CommentsIdx = ?;`;
+            const postReplyQuery = `insert into CommentsReply(useridx, videoidx,CommentsIdx, ReplyText) values (?,?,?,?);`;
+            await connection.beginTransaction();
+            await connection.query(addReplyCountQuery,commentsIdx);
+            await connection.query(postReplyQuery,[userIdx,videoIdx,commentsIdx,replyText]);
+            await connection.commit();
+
+            let responseData = {};
+            responseData = resFormat(true, 100, '답글 작성 api 성공');
+            responseData.result = {userIdx: userIdx, commentsIdx: commentsIdx, videoIdx:videoIdx,replyText: replyText};
+            return res.json(responseData);
+        }catch(err){
+            logger.error(`App - Post Reply Query error\n: ${JSON.stringify(err)}`);
+            connection.release();
+            return res.json(resFormat(false, 290, 'Post Reply query 중 오류가 발생하였습니다.'));
+        }
+    }catch(err) {
+        logger.error(`App - Post Reply connection error\n: ${JSON.stringify(err)}`);
+        return res.json(resFormat(false, 299, 'DB connection error'));
+    }
+};
+/**
+ update : 2020.07.26
+ 09.reply get API = 댓글의 답글 조회
+ **/
+exports.getReply = async function (req, res) {
+    const videoIdx = parseInt(req.params.videoIdx);
+    const commentsIdx = parseInt(req.params.commentsIdx);
+    const page = parseInt(req.query.page);
+    if (!(validation.isValidePageIndex(videoIdx) && validation.isValidePageIndex(page) && validation.isValidePageIndex(commentsIdx))) {
+        return res.json(resFormat(false, 200, '파라미터 값은 1이상의 정수이어야합니다.'));
+    }
+    try {
+        const connection = await pool.getConnection(async conn => conn);
+        try {
+            // 비디오 인덱스 존재 유무
+            const checkVideoIdxQuery = `select exists(select VideoIdx from Videos where VideoIdx = ?) as exist;`;
+            const [isValidIdx] = await connection.query(checkVideoIdxQuery, videoIdx);
+
+            if (!isValidIdx[0].exist) {
+                connection.release();
+                return res.json(resFormat(false, 201, '존재하지 않는 비디오 인덱스 입니다.'));
+            }
+
+            // 댓글 인덱스 존재 유무
+            const checkCommentsIdxQuery = `select exists(select CommentsIdx from Comments where CommentsIdx = ?) as exist;`;
+            const [isValidCommentsIdx] = await connection.query(checkCommentsIdxQuery,commentsIdx);
+            if(!isValidCommentsIdx[0].exist){
+                connection.release();
+                return res.json(resFormat(false,202,'존재하지 않는 댓글 인덱스 입니다.'));
+            }
+
+            // paging 댓글 조회
+            const getCommentQuery = `
+            select CommentsIdx,CmtReplyIdx,UserIdx, VideoIdx, ReplyText, LikesCount
+                    from CommentsReply
+                    where CommentsIdx = ? and IsDeleted = 'N'
+                    order by CreatedAt desc
+                    limit 10 offset ?;
+            `;
+            const [CommentsArr] = await connection.query(getCommentQuery,[commentsIdx,(page-1)*10]);
+
+            let responseData = {};
+            responseData = resFormat(true,100,'답글 조회 api 성공');
+            responseData.result = CommentsArr;
+
+            res.json(responseData);
+        } catch (err) {
+            logger.error(`App - Get Comments Reply Query error\n: ${JSON.stringify(err)}`);
+            connection.release();
+            return res.json(resFormat(false, 290, 'Get Comment Reply query 중 오류가 발생하였습니다.'));
+        }
+    } catch (err) {
+        logger.error(`App - Comments connection error\n: ${JSON.stringify(err)}`);
         return res.json(resFormat(false, 299, 'DB connection error'));
     }
 };
