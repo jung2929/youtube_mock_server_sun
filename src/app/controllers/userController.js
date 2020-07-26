@@ -9,9 +9,63 @@ const request = require('request');
 const resFormat = require('../../../config/responseMessages');
 
 
-
+//PATCH	/user/subscribe	채널 구독 갱신
 exports.updateSubscribe = async function (req, res){
+    const channelUserIdx = parseInt(req.params.userIdx);
+    const jwtoken = req.headers['x-access-token'];
 
+    if (!validation.isValidePageIndex(userIdx)) {
+        return res.json(resFormat(false, 200, 'parameter 값은 1이상의 정수 값이어야 합니다.'));
+    }
+    if (!jwtoken){
+        return res.json(resFormat(false, 201, '로그인후 사용가능한 기능입니다.'));
+    }
+    try{
+        const connection = await pool.getConnection(async conn => conn);
+        try {
+            // db에 비디오 인덱스 존재 판별
+            const userExistQuery = `select exists(select UserIdx from User where UserIdx = ?) as exist;`;
+            const [isExists] = await connection.query(userExistQuery, userIdx);
+            if (!isExists[0].exist) {
+                connection.release();
+                return res.json(resFormat(false, 202, '존재하지 않는 유저 인덱스 입니다.'))
+            }
+            // 유효한 토큰 검사
+            let jwtDecode = jwt.verify(jwtoken, secret_config.jwtsecret);
+            const userIdx = jwtDecode.userIdx;
+            const userId = jwtDecode.userId;
+            const checkTokenValideQuery = `select exists(select UserIdx from User where UserIdx = ? and UserId = ?) as exist;`;
+            const [isValidUser] = await connection.query(checkTokenValideQuery, [userIdx, userId]);
+            if (!isValidUser[0].exist) {
+                connection.release();
+                return res.json(resFormat(false, 203, '유효하지않는 토큰입니다.'));
+            }
+
+            //구독 테이블에 정보 조회
+            const checkExistSubscribeHistory = `select exists(select SubscribeIdx from UserSubscribes where UserIdx = ? and ChannelUserIdx = ? ) as exist;`;
+            const [isExistInHistory] = await connection.query(checkExistSubscribeHistory, [userIdx, channelUserIdx]);
+            // 구독 이력에 없다면 구독이력 추가
+            // 구독 이력에 있다면 isDeleted 를 'Y','N' 토글
+            await connection.beginTransaction();
+            if (!isExistInHistory[0].exist){
+                const insertSubscribeQuery = `insert into UserSubscribes( UserIdx, ChannelUserIdx) values (?,?);`;
+                await connection.query(insertSubscribeQuery,[userIdx,channelUserIdx]);
+            }
+            else{
+                const updateSubscribeToggleQuery = `update UserSubscribes set IsDeleted = (if(IsDeleted='N','Y','N')) where UserIdx=? and ChannelUserIdx=?;`;
+                await connection.query(updateSubscribeToggleQuery,[userIdx,channelUserIdx]);
+            }
+            await connection.commit();
+
+        } catch(err){
+            logger.error(`App - user/subscribe Query error\n: ${JSON.stringify(err)}`);
+            connection.release();
+            return res.json(resFormat(false, 290, '구독 업데이트 query 중 오류가 발생하였습니다.'));
+        }
+    }catch (err) {
+        logger.error(`App - user/subscribe connection error\n: ${JSON.stringify(err)}`);
+        return res.json(resFormat(false, 299, 'DB connection error'));
+    }
 };
 
 

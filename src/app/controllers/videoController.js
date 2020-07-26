@@ -361,7 +361,7 @@ exports.updateLikes = async function (req, res){
             const userId = jwtDecode.userId;
             const checkTokenValideQuery = `select exists(select UserIdx from User where UserIdx = ? and UserId = ?) as exist;`;
             const [isValidUser] = await connection.query(checkTokenValideQuery, [userIdx, userId]);
-            if (!isValidUser) {
+            if (!isValidUser[0].exist) {
                 connection.release();
                 return res.json(resFormat(false, 204, '유효하지않는 토큰입니다.'));
             }
