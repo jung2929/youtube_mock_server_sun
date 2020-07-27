@@ -63,10 +63,12 @@ exports.postComment = async function (req, res) {
             responseData = resFormat(true, 100, '댓글 작성 api 성공');
             responseData.result = {userIdx: userIdx, videoIdx: videoIdx, CommentsIdx:commentsIdx ,commentsText: commentsText};
 
+            console.log("POST Comments api");
             connection.release();
             return res.json(responseData);
         } catch (err) {
             logger.error(`App - Post Comments Query error\n: ${JSON.stringify(err)}`);
+            console.log(err);
             connection.release();
             return res.json(resFormat(false, 290, 'Post comment query 중 오류가 발생하였습니다.'));
         }
@@ -122,10 +124,12 @@ exports.getComment = async function (req, res) {
             responseData = resFormat(true,100,'댓글 조회 api 성공');
             responseData.result = CommentsArr;
 
+            console.log("get Comments api");
             connection.release();
             res.json(responseData);
         } catch (err) {
             logger.error(`App - Get Comments Query error\n: ${JSON.stringify(err)}`);
+            console.log(err);
             connection.release();
             return res.json(resFormat(false, 290, 'Get comment query 중 오류가 발생하였습니다.'));
         }
@@ -185,10 +189,12 @@ exports.updateComment = async function (req, res) {
             responseData = resFormat(true, 100, '댓글 수정 api 성공');
             responseData.result = {userIdx: userIdx, videoIdx: videoIdx, commentsIdx:commentsIdx ,commentsText: commentsText};
 
+            console.log("update Comments api");
             connection.release();
             return res.json(responseData);
         } catch (err) {
             logger.error(`App - Update Comments Query error\n: ${JSON.stringify(err)}`);
+            console.log(err);
             connection.release();
             return res.json(resFormat(false, 290, 'Update comment query 중 오류가 발생하였습니다.'));
         }
@@ -243,10 +249,12 @@ exports.daleteComment = async function (req, res) {
             responseData = resFormat(true, 100, '댓글 삭제 api 성공');
             responseData.result = {userIdx: userIdx, videoIdx: videoIdx, commentsIdx:commentsIdx ,IsDeleted: 'Y'};
 
+            console.log("update Comments api");
             connection.release();
             return res.json(responseData);
         }catch (err) {
             logger.error(`App - Delete Comments Query error\n: ${JSON.stringify(err)}`);
+            console.log(err);
             connection.release();
             return res.json(resFormat(false, 290, 'Delete comment query 중 오류가 발생하였습니다.'));
         }
@@ -303,11 +311,13 @@ exports.getReply = async function (req, res) {
             responseData = resFormat(true,100,'답글 조회 api 성공');
             responseData.result = CommentsArr;
 
+            console.log("get reply api");
             connection.release();
             res.json(responseData);
         } catch (err) {
             logger.error(`App - Get Comments Reply Query error\n: ${JSON.stringify(err)}`);
             connection.release();
+            console.log(err);
             return res.json(resFormat(false, 290, 'Get Comment Reply query 중 오류가 발생하였습니다.'));
         }
     } catch (err) {
@@ -383,11 +393,13 @@ exports.postReply = async function (req ,res) {
                 replyText: replyText
             };
 
+            console.log("post reply api");
             connection.release();
             return res.json(responseData);
         }catch(err){
             logger.error(`App - Post Reply Query error\n: ${JSON.stringify(err)}`);
             connection.release();
+            console.log(err);
             return res.json(resFormat(false, 290, 'Post Reply query 중 오류가 발생하였습니다.'));
         }
     }catch(err) {
@@ -454,10 +466,12 @@ exports.updateReply = async function (req, res) {
             responseData = resFormat(true, 100, '답글 수정 api 성공');
             responseData.result = {userIdx: userIdx, commentsIdx: commentsIdx, videoIdx:videoIdx,replyIdx: replyIdx,replyText: replyText};
 
+            console.log("update reply api");
             connection.release();
             return res.json(responseData);
         }catch(err){
             logger.error(`App - Update Reply Query error\n: ${JSON.stringify(err)}`);
+            console.log(err);
             connection.release();
             return res.json(resFormat(false, 290, 'Update Reply query 중 오류가 발생하였습니다.'));
         }
@@ -500,7 +514,7 @@ exports.deleteReply = async function (req, res) {
             const [isValidIdx] = await connection.query(checkValidCommentsQuery, [replyIdx,userIdx,commentsIdx]);
             if (!isValidIdx[0].exist) {
                 connection.release();
-                return res.json(resFormat(false, 202, '답글 삭제가 거부되었습니다.'));
+                return res.json(resFormat(alse, 202, '답글 삭제가 거부되었습니다.'));
             }
 
             // 댓글 delete 처리
@@ -515,11 +529,13 @@ exports.deleteReply = async function (req, res) {
             responseData = resFormat(true, 100, '답글 삭제 api 성공');
             responseData.result = {userIdx: userIdx, commentsIdx: commentsIdx, replyIdx:replyIdx ,IsDeleted: 'Y'};
 
+            console.log("delete reply api");
             connection.release();
             return res.json(responseData);
         }catch (err) {
             logger.error(`App - Delete Reply Query error\n: ${JSON.stringify(err)}`);
             connection.release();
+            console.log(err);
             return res.json(resFormat(false, 290, 'Delete Reply query 중 오류가 발생하였습니다.'));
         }
     }catch (err) {
