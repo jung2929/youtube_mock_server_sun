@@ -7,6 +7,9 @@ class validation{
         else if (Number(page) === 0 ){
             isValid = false;
         }
+        else if(!page){
+            isValid = false;
+        }
         return isValid;
     }
 }

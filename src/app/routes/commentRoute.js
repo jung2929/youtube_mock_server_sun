@@ -11,5 +11,6 @@ module.exports = function(app){
     //app.get('/videos/:videoIdx/comments/:commentsIdx',comment.postReply);
     app.route('/videos/:videoIdx/comments/:commentsIdx').post(comment.postReply);
     app.get('/videos/:videoIdx/comments/:commentsIdx',comment.getReply);
-
+    app.patch('/videos/:videoIdx/comments/:commentsIdx',comment.updateReply);
+    app.delete('/videos/:videoIdx/comments/:commentsIdx',comment.deleteReply);
 };
