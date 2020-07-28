@@ -226,7 +226,7 @@ exports.getWatch = async function (req, res) {
     try {
         const connection = await pool.getConnection(async conn => conn);
         //likeStatus를 확인하기위한 유저 인덱스 값 jwt가 존재한다면 변경
-        let userIdxForLikeStatus = 0;
+        let watchUserIdx = 0;
         try {
             const jwtoken = req.headers['x-access-token'];
 
@@ -244,7 +244,7 @@ exports.getWatch = async function (req, res) {
                 let jwtDecode = jwt.verify(jwtoken, secret_config.jwtsecret);
                 const userIdx = jwtDecode.userIdx;
                 const userId = jwtDecode.userId;
-                userIdxForLikeStatus = userIdx;
+                watchUserIdx = userIdx;
 
                 const existUserCheckQuery = 'select exists(select UserIdx from User where UserIdx = ? and UserId = ?) as exist;';
                 const [isExistUser] = await connection.query(existUserCheckQuery, [userIdx, userId]);
@@ -286,29 +286,31 @@ exports.getWatch = async function (req, res) {
                    TitleText,
                    MainText,
                    Views,
-                   LikesCount,
+                   Videos.LikesCount,
                    DislikesCount,
                    U.SubscribeCount,
                    CommentsCount,
                    case
                        when isnull(UP.IsDeleted) then 'false'
-                       else case when UP.IsDeleted = 'N' then 'true' else 'false' end end as SaveStatus,
+                       else case when UP.IsDeleted = 'N' then true else false end end as SaveStatus,
                    case when isnull(UL.LikeStatus) then 0 else UL.LikeStatus end          as LikeStatus,
                    case
                        when isnull(US.IsDeleted) then 'false'
                        else case when US.IsDeleted = 'N' then 'true' else 'false' end end as SubscribeStatus,
                    VideoUrl,
                    U.ProfileUrl,
+                   UW.WatchingTime,
                    Videos.CreatedAt
             
             from Videos
                      left outer join User U on U.UserId = Videos.UserId
                      left outer join UserLikes UL on UL.VideoIdx = Videos.VideoIdx and UL.UserIdx = ?
                      left outer join UserSubscribes US on US.UserIdx = ? and U.UserIdx = US.ChannelUserIdx
-                    left outer join UserPlayList UP on UP.UserIdx = ? and UP.VideoIdx = ?
+                    left outer join UserPlayList UP on UP.UserIdx = ? and UP.VideoIdx = Videos.VideoIdx
+                    left outer join UserWatchHistory UW on UW.UserIdx = ? and UW.VideoIdx = Videos.VideoIdx
             where Videos.VideoIdx = ?;
 `;
-            const [videoInfo] = await connection.query(videoInfoQuery, [userIdxForLikeStatus,userIdxForLikeStatus,userIdxForLikeStatus,videoIdx,videoIdx]);
+            const [videoInfo] = await connection.query(videoInfoQuery, [watchUserIdx,watchUserIdx,watchUserIdx,watchUserIdx,videoIdx]);
             let resultArr = {};
             resultArr.videoInfo = videoInfo[0];
 
@@ -598,8 +600,67 @@ exports.postSaveVideo = async function (req, res) {
  20./videos/:videoIdx/play-time = play time 기록
  **/
 exports.updatePlayTime = async function (req, res) {
+    const videoIdx = parseInt(req.params.videoIdx);
+    const jwtoken = req.headers['x-access-token'];
+    const playTime = req.body.playTime;
 
-}
+    if (!validation.isValidePageIndex(videoIdx)) {
+        return res.json(resFormat(false, 200, 'parameter 값은 1이상의 정수 값이어야 합니다.'));
+    }
+    if (!jwtoken){
+        return res.json(resFormat(false, 201, '로그인후 사용가능한 기능입니다.'));
+    }
+    if (!playTime){
+        return res.json(resFormat(false, 202, '시청 시간 데이터가 없습니다.'));
+    }
+    try{
+        const connection = await pool.getConnection(async conn => conn);
+        try{
+            // db에 비디오 인덱스 존재 판별
+            const videoExistQuery = `select exists(select VideoIdx from Videos where VideoIdx = ?) as exist;`;
+            const [isExists] = await connection.query(videoExistQuery, videoIdx);
+            if (!isExists[0].exist) {
+                connection.release();
+                return res.json(resFormat(false, 203, '존재하지 않는 비디오 인덱스 입니다.'))
+            }
+            // 유효한 토큰 검사
+            let jwtDecode = jwt.verify(jwtoken, secret_config.jwtsecret);
+            const userIdx = jwtDecode.userIdx;
+            const userId = jwtDecode.userId;
+            const checkTokenValideQuery = `select exists(select UserIdx from User where UserIdx = ? and UserId = ?) as exist;`;
+            const [isValidUser] = await connection.query(checkTokenValideQuery, [userIdx, userId]);
+            if (!isValidUser[0].exist) {
+                connection.release();
+                return res.json(resFormat(false, 204, '유효하지않는 토큰입니다.'));
+            }
+            // Mmm:ss,mm:ss 형식만을 지원함
+            const regexTimeExpend = /^([0-9][0-9][0-9]):?([0-5][0-9])$/;
+            const regexTime = /^([0-9][0-9]):?([0-5][0-9])$/;
+            if(!regexTimeExpend.test(playTime) && !regexTime.test(playTime)){
+                connection.release();
+                return res.json(resFormat(false, 205, 'mm:ss 형식의 문자를 지원합니다.'));
+            }
+            const updatePlayTimeQuery = `update UserWatchHistory set WatchingTime = ? where UserIdx = ? and VideoIdx = ?`;
+            await connection.beginTransaction();
+            await connection.query(updatePlayTimeQuery,[playTime,userIdx,videoIdx]);
+            await connection.commit();
+            connection.release();
+
+            let responseData =resFormat(true, 100, 'update playTime');
+            responseData.result = {userIdx:userIdx,videoIdx:videoIdx,playTime:playTime};
+            return res.json(responseData);
+        }
+        catch (err) {
+            logger.error(`App - update /videos/:videoIdx/play-time Query error\n: ${JSON.stringify(err)}`);
+            connection.rollback();
+            connection.release();
+            return res.json(resFormat(false, 290, 'update /videos/:videoIdx/play-time 정보 query 중 오류가 발생하였습니다.'));
+        }
+    }catch (err) {
+        logger.error(`App - update /videos/:videoIdx/play-time connection error\n: ${JSON.stringify(err)}`);
+        return res.json(resFormat(false, 299, 'DB connection error'));
+    }
+};
 
 function getRandomArr(maxListCount) {
     let randomArr = [];

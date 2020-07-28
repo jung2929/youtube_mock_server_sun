@@ -5,6 +5,7 @@ module.exports = function(app){
 
     app.patch('/users/:userIdx/subscribe',user.updateSubscribe);
     app.get('/users/:userIdx/subscribe',user.getSubscribeData);
+    app.get('/users/:userIdx/subscribe/profile',user.getSubscribeProfile);
 
     //test api for login
     app.route('/users').post(user.login);

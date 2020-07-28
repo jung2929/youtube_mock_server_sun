@@ -83,7 +83,10 @@ exports.postComment = async function (req, res) {
  **/
 exports.getComment = async function (req, res) {
     const videoIdx = req.params.videoIdx;
-    const page = parseInt(req.query.page);
+    let page = parseInt(req.query.page);
+    let pagingCount = 10;
+    const filter = req.query.filter;
+
     if (!(validation.isValidePageIndex(videoIdx) && validation.isValidePageIndex(page))) {
         return res.json(resFormat(false, 200, '파라미터 값은 1이상의 정수이어야합니다.'));
     }
@@ -97,6 +100,10 @@ exports.getComment = async function (req, res) {
             if (!isValidIdx[0].exist) {
                 connection.release();
                 return res.json(resFormat(false, 201, '존재하지 않는 비디오 인덱스 입니다.'));
+            }
+            if(filter === 'new'){
+                page = 1;
+                pagingCount = 1;
             }
             // paging 댓글 조회
             const getCommentQuery = `
@@ -116,9 +123,9 @@ exports.getComment = async function (req, res) {
             where VideoIdx = ?
               and Comments.IsDeleted = 'N'
             order by Comments.CreatedAt desc
-            limit 10 offset ?;
+            limit ? offset ?;
             `;
-            const [CommentsArr] = await connection.query(getCommentQuery,[videoIdx,(page-1)*10]);
+            const [CommentsArr] = await connection.query(getCommentQuery,[videoIdx,pagingCount,(page-1)*10]);
 
             let responseData = {};
             responseData = resFormat(true,100,'댓글 조회 api 성공');
@@ -392,6 +399,15 @@ exports.postReply = async function (req ,res) {
             await connection.commit();
 
             const replyIdx = getReplyIdx[0].insertId;
+            const getUserDataQuery = `
+                                    select CommentsReply.CreatedAt,
+                                           U.ProfileUrl
+                                    from CommentsReply
+                                    left outer join User U on CommentsReply.UserIdx = U.UserIdx
+                                    where CommentsReply.UserIdx = ?
+                                      and CmtReplyIdx = ?;
+                                             `;
+            const [getUserData] = await connection.query(getUserDataQuery,[userIdx,replyIdx]);
 
             let responseData = {};
             responseData = resFormat(true, 100, '답글 작성 api 성공');
@@ -400,7 +416,9 @@ exports.postReply = async function (req ,res) {
                 videoIdx: videoIdx,
                 commentsIdx: commentsIdx,
                 replyIdx: replyIdx,
-                replyText: replyText
+                replyText: replyText,
+                ProfileUrl: getUserData[0].ProfileUrl,
+                CreateAt : getUserData[0].CreatedAt
             };
 
             console.log("post reply api");

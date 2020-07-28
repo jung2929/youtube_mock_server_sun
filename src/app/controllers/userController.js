@@ -14,6 +14,7 @@ var admin = require('firebase-admin');
 var serviceAccount = require("../../../config/serviceAccountKey.json");
 //var serviceAccount = require("path/to/serviceAccountKey.json");
 
+
 admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
     databaseURL: "https://clone-e7f75.firebaseio.com"
@@ -22,7 +23,7 @@ admin.initializeApp({
 //PATCH	/user/subscribe	채널 구독 갱신
 /**
  update : 2020.07.26
- 17.subscribe API = 구독 상태 갱신
+ 16.subscribe API = 구독 상태 갱신
  **/
 exports.updateSubscribe = async function (req, res){
     const channelUserIdx = parseInt(req.body.channelUserIdx);
@@ -94,7 +95,7 @@ exports.updateSubscribe = async function (req, res){
 };
 /**
  update : 2020.07.26
- 18.video relate with subscribe API = 구독한 유저의 데이터 조회
+ 17.video relate with subscribe API = 구독한 유저의 데이터 조회
  **/
 exports.getSubscribeData = async function (req, res){
     const dataType = req.query.type;
@@ -167,7 +168,48 @@ exports.getSubscribeData = async function (req, res){
         return res.json(resFormat(false, 299, 'DB connection error'));
     }
 };
+/**
+ update : 2020.07.28
+ 18.video relate with subscribe API = 구독한 유저의 프로필 조회
+ **/
+exports.getSubscribeProfile = async function (req, res){
+    const jwtoken = req.headers['x-access-token'];
+    const page = req.query.page;
 
+    if (!validation.isValidePageIndex(page)) {
+        return res.json(resFormat(false, 200, 'parameter 값은 1이상의 정수 값이어야 합니다.'));
+    }
+    if(!jwtoken){
+        return res.json(resFormat(false, 201, '로그인후 사용가능한 기능입니다.'));
+    }
+    try{
+        const connection = await pool.getConnection(async conn => conn);
+        try{
+            // 유효한 토큰 검사
+            let jwtDecode = jwt.verify(jwtoken, secret_config.jwtsecret);
+            const userIdx = jwtDecode.userIdx;
+            const userId = jwtDecode.userId;
+            const checkTokenValideQuery = `select exists(select UserIdx from User where UserIdx = ? and UserId = ?) as exist;`;
+            const [isValidUser] = await connection.query(checkTokenValideQuery, [userIdx, userId]);
+            if (!isValidUser[0].exist) {
+                connection.release();
+                return res.json(resFormat(false, 202, '유효하지않는 토큰입니다.'));
+            }
+            //todo
+            // 유저 프로필 가져오기
+
+
+
+        }catch (err){
+            logger.error(`App -  get users/subscribe Query error\n: ${JSON.stringify(err)}`);
+            connection.release();
+            return res.json(resFormat(false, 290, '구독 정보 조회 query 중 오류가 발생하였습니다.'));
+        }
+    }catch(err){
+        logger.error(`App - get users/subscribe connection error\n: ${JSON.stringify(err)}`);
+        return res.json(resFormat(false, 299, 'DB connection error'));
+    }
+}
 
 
 /**
@@ -248,7 +290,10 @@ exports.login = async function (req, res){
         return res.json(statusFormat(false,299,'login api connection error'));
     }
 }
-
+/**
+ update : 2020.07.27
+ xx.check token
+ **/
 exports.check = async function (req, res) {
     res.json({
         isSuccess: true,
