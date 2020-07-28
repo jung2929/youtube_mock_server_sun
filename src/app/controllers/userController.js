@@ -99,7 +99,7 @@ exports.updateSubscribe = async function (req, res){
  **/
 exports.getSubscribeData = async function (req, res){
     const dataType = req.query.type;
-    const DEF_SUBSCRIBE_DATA_TYPE_LIST = ["videos"];
+    const DEF_SUBSCRIBE_DATA_TYPE_LIST = ["videos","continue","firstWatch","community"];
     const jwtoken = req.headers['x-access-token'];
     const page = req.query.page;
 
@@ -126,10 +126,9 @@ exports.getSubscribeData = async function (req, res){
                 connection.release();
                 return res.json(resFormat(false, 203, '유효하지않는 토큰입니다.'));
             }
-            //todo
-            // 필터링 작업
 
-            let apiSuccessMessage = '';
+            let responseData = {};
+            // 필터링
             switch (dataType) {
                 case DEF_SUBSCRIBE_DATA_TYPE_LIST[0]://videos
                     const getSubscribeChannelVideoQuery = `select ChannelUserIdx,
@@ -151,12 +150,77 @@ exports.getSubscribeData = async function (req, res){
                     responseData.result = subscribeChannelVideos;
                     apiSuccessMessage = "구독 영상 조회 성공";
                     break;
-                case DEF_SUBSCRIBE_DATA_TYPE_LIST[1]://
+                case DEF_SUBSCRIBE_DATA_TYPE_LIST[1]://continue
+                    const getSubscribeChannelVideoContinueQuery = `
+                                                                    select ChannelUserIdx,
+                                                                           U.UserId,
+                                                                           V.VideoIdx,
+                                                                           V.TitleText,
+                                                                           V.Views,
+                                                                           V.CreatedAt,
+                                                                           V.ThumUrl,
+                                                                           U.ProfileUrl,
+                                                                           UW.WatchingTime
+                                                                    from UserSubscribes
+                                                                             left outer join User U on UserSubscribes.ChannelUserIdx = U.UserIdx
+                                                                             left outer join Videos V on U.UserId = V.UserId
+                                                                             left outer join UserWatchHistory UW on UW.VideoIdx = V.VideoIdx
+                                                                    where UserSubscribes.UserIdx = ? and UW.WatchingTime != '00:00'
+                                                                    order by V.CreatedAt desc
+                                                                    limit 10 offset ?;
+                                                                    `;
+                    const [getSubscribeChannelVideoContinue] = await connection.query(getSubscribeChannelVideoContinueQuery,[userIdx,parseInt((page-1)*10)]);
+                    responseData = resFormat(true,100,"이어서 보기 영상 조회 성공");
+                    responseData.result = getSubscribeChannelVideoContinue;
+                    break;
+                case DEF_SUBSCRIBE_DATA_TYPE_LIST[2]://firstWatch
+                    const getSubscribeChannelVideoFirstWatchQuery = `
+                                                                    select ChannelUserIdx,
+                                                                           U.UserId,
+                                                                           V.VideoIdx,
+                                                                           V.TitleText,
+                                                                           V.Views,
+                                                                           V.CreatedAt,
+                                                                           V.ThumUrl,
+                                                                           U.ProfileUrl,
+                                                                           UW.WatchingTime
+                                                                    from UserSubscribes
+                                                                             left outer join User U on UserSubscribes.ChannelUserIdx = U.UserIdx
+                                                                             left outer join Videos V on U.UserId = V.UserId
+                                                                             left outer join UserWatchHistory UW on UW.VideoIdx = V.VideoIdx
+                                                                    where UserSubscribes.UserIdx = ? and UW.WatchingTime = '00:00'
+                                                                    order by V.CreatedAt desc
+                                                                    limit 10 offset ?;
+                                                                    `;
+                    const [getSubscribeChannelVideoFirstWatch] = await connection.query(getSubscribeChannelVideoFirstWatchQuery,[userIdx,parseInt((page-1)*10)]);
+                    responseData = resFormat(true,100,"시청하지 않은 영상 조회 성공");
+                    responseData.result = getSubscribeChannelVideoFirstWatch;
+                    break;
+                case DEF_SUBSCRIBE_DATA_TYPE_LIST[3]:
+                    const getSubscribeCommunityQuery = `
+                    select CommunityIdx,
+                           U.UserIdx,
+                           UserCommunity.UserId,
+                           MainText,
+                           LikesCount,
+                           DislikesCount,
+                           ImgUrl,
+                           U.ProfileUrl,
+                           CommentCount,
+                           UserCommunity.CreatedAt
+                    from UserCommunity
+                             left outer join User U on UserCommunity.UserId = U.UserId
+                             left outer join UserSubscribes US on US.ChannelUserIdx = U.UserIdx
+                    where US.UserIdx = ?;
+                    `;
+                    const [getSubscribeCommunity] = await connection.query(getSubscribeCommunityQuery,userIdx);
+                    responseData = resFormat(true,100,"구독유저 커뮤니티 글 조회 성공");
+                    responseData.result = getSubscribeCommunity;
                     break;
             }
             connection.release();
 
-            let responseData = resFormat(true,100,apiSuccessMessage);
+
             return res.json(responseData);
         }catch (err){
             logger.error(`App -  get users/subscribe Query error\n: ${JSON.stringify(err)}`);
@@ -174,11 +238,7 @@ exports.getSubscribeData = async function (req, res){
  **/
 exports.getSubscribeProfile = async function (req, res){
     const jwtoken = req.headers['x-access-token'];
-    const page = req.query.page;
 
-    if (!validation.isValidePageIndex(page)) {
-        return res.json(resFormat(false, 200, 'parameter 값은 1이상의 정수 값이어야 합니다.'));
-    }
     if(!jwtoken){
         return res.json(resFormat(false, 201, '로그인후 사용가능한 기능입니다.'));
     }
@@ -195,10 +255,22 @@ exports.getSubscribeProfile = async function (req, res){
                 connection.release();
                 return res.json(resFormat(false, 202, '유효하지않는 토큰입니다.'));
             }
-            //todo
-            // 유저 프로필 가져오기
+            // 유저 프로필 조회
+            const getSubscribeUserProfileQuery = `
+                                                    select ChannelUserIdx,
+                                                           U.UserId,
+                                                           U.ProfileUrl
+                                                    from UserSubscribes
+                                                             left outer join User U on U.UserIdx = UserSubscribes.ChannelUserIdx
+                                                    where UserSubscribes.UserIdx = ?;
+                                                    `;
+            const [getSubscribeUserProfile] = await connection.query(getSubscribeUserProfileQuery,userIdx);
 
+            let responseData = resFormat(true,100,'구독 유저 프로필 조회 성공');
+            responseData.result = getSubscribeUserProfile
 
+            connection.release();
+            return  res.json(responseData);
 
         }catch (err){
             logger.error(`App -  get users/subscribe Query error\n: ${JSON.stringify(err)}`);
