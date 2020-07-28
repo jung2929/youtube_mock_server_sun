@@ -330,28 +330,26 @@ exports.getWatch = async function (req, res) {
  13.watch = 영상 좋아요 설정 api
  **/
 exports.updateLikes = async function (req, res){
-    const videoIdx = parseInt(req.params.videoIdx);
-    const jwtoken = req.headers['x-access-token'];
-    const likeStatus = req.body.likeStatus;
-    console.log('Patch Video Likes Body data = '+videoIdx+', '+likeStatus);
-    // likeStatus 정의
-    const DEF_NOT_SET_STATUS = 0;
-    const DEF_LIKE_STATUS = 1;
-    const DEF_DISLIKE_STATUS = 2;
-
-    if (!validation.isValidePageIndex(videoIdx)) {
-        return res.json(resFormat(false, 200, 'parameter 값은 1이상의 정수 값이어야 합니다.'));
-    }
-    if (!jwtoken){
-        return res.json(resFormat(false, 201, '로그인후 사용가능한 기능입니다.'));
-    }
-    if (!likeStatus){
-        return res.json(resFormat(false,205,'like status가 null 값입니다.'));
-    }
-    if (likeStatus<0 || likeStatus>2 || likeStatus === undefined){
-        return res.json(resFormat(false, 202, '좋아요 설정값은 0~2 사이의 값입니다.'));
-    }
     try{
+        const videoIdx = parseInt(req.params.videoIdx);
+        const jwtoken = req.headers['x-access-token'];
+        const likeStatus = req.body.likeStatus;
+        console.log('Patch Video Likes Body data = '+videoIdx+', '+likeStatus);
+        // likeStatus 정의
+        const DEF_NOT_SET_STATUS = 0;
+        const DEF_LIKE_STATUS = 1;
+        const DEF_DISLIKE_STATUS = 2;
+
+        if (!validation.isValidePageIndex(videoIdx)) {
+            return res.json(resFormat(false, 200, 'parameter 값은 1이상의 정수 값이어야 합니다.'));
+        }
+        if (!jwtoken){
+            return res.json(resFormat(false, 201, '로그인후 사용가능한 기능입니다.'));
+        }
+        if (likeStatus<0 || likeStatus>2 || likeStatus === undefined){
+            return res.json(resFormat(false, 202, '좋아요 설정값은 0~2 사이의 값입니다.'));
+        }
+
         const connection = await pool.getConnection(async conn => conn);
         try{
             // db에 비디오 인덱스 존재 판별
