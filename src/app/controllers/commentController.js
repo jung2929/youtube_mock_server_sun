@@ -299,11 +299,21 @@ exports.getReply = async function (req, res) {
 
             // paging 댓글 조회
             const getCommentQuery = `
-            select CommentsIdx,CmtReplyIdx,UserIdx, VideoIdx, ReplyText, LikesCount
-                    from CommentsReply
-                    where CommentsIdx = ? and IsDeleted = 'N'
-                    order by CreatedAt desc
-                    limit 10 offset ?;
+                select CommentsIdx,
+                       CmtReplyIdx,      
+                       CommentsReply.UserIdx,
+                       U.UserId,
+                       VideoIdx,
+                       ReplyText,
+                       LikesCount,
+                       U.ProfileUrl,
+                      CommentsReply.CreatedAt
+                from CommentsReply
+                         left outer join User U on U.UserIdx = CommentsReply.UserIdx
+                where CommentsIdx = ?
+                  and CommentsReply.IsDeleted = 'N'
+                order by CommentsReply.CreatedAt desc
+                limit 10 offset ?;
             `;
             const [CommentsArr] = await connection.query(getCommentQuery,[commentsIdx,(page-1)*10]);
 

@@ -10,9 +10,6 @@ module.exports = function(app){
     app.get('/community-posts',video.getCommunity);
     app.get('/videos/:videoIdx',video.getWatch);
     app.patch('/videos/:videoIdx/likes',video.updateLikes);
-
-    //test api
-    //app.get('/watch',video.watch);
-    app.get('/login',video.signin);
-
+    app.route('/saved-videos/:videoIdx').post(video.postSaveVideo);
+    app.get('/saved-videos',video.getSaveVideo)
 };

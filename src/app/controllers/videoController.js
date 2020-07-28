@@ -290,7 +290,10 @@ exports.getWatch = async function (req, res) {
                    DislikesCount,
                    U.SubscribeCount,
                    CommentsCount,
-                   case when isnull(UL.LikeStatus) then 0 else UL.LikeStatus end as LikeStatus,
+                   case when isnull(UL.LikeStatus) then 0 else UL.LikeStatus end          as LikeStatus,
+                   case
+                       when isnull(US.IsDeleted) then 'false'
+                       else case when US.IsDeleted = 'N' then 'true' else 'false' end end as SubscribeStatus,
                    VideoUrl,
                    U.ProfileUrl,
                    Videos.CreatedAt
@@ -298,9 +301,10 @@ exports.getWatch = async function (req, res) {
             from Videos
                      left outer join User U on U.UserId = Videos.UserId
                      left outer join UserLikes UL on UL.VideoIdx = Videos.VideoIdx and UL.UserIdx = ?
+                     left outer join UserSubscribes US on US.UserIdx=? and U.UserIdx = US.ChannelUserIdx
             where Videos.VideoIdx = ?;
 `;
-            const [videoInfo] = await connection.query(videoInfoQuery, [userIdxForLikeStatus, videoIdx]);
+            const [videoInfo] = await connection.query(videoInfoQuery, [userIdxForLikeStatus,userIdxForLikeStatus,videoIdx]);
             let resultArr = {};
             resultArr.videoInfo = videoInfo[0];
 
@@ -340,6 +344,9 @@ exports.updateLikes = async function (req, res){
     }
     if (!jwtoken){
         return res.json(resFormat(false, 201, '로그인후 사용가능한 기능입니다.'));
+    }
+    if (!likeStatus){
+        return res.json(resFormat(false,205,'like status가 null 값입니다.'));
     }
     if (likeStatus<0 || likeStatus>2 || likeStatus === undefined){
         return res.json(resFormat(false, 202, '좋아요 설정값은 0~2 사이의 값입니다.'));
@@ -396,6 +403,7 @@ exports.updateLikes = async function (req, res){
 
                 //변경 값이 없음
                 if(previousLikeStatus[0].LikeStatus === likeStatus){
+                    connection.release();
                     return res.json(resFormat(false,205,"LikeStatus의 변경값이 없습니다."))
                 }
 
@@ -445,19 +453,143 @@ exports.updateLikes = async function (req, res){
     }
 
 };
+/**
+ update : 2020.07.28
+ 15.save-videos = 나중에 볼 영상 리스트에 조회
+ **/
+exports.getSaveVideo = async function(req, res){
+    const page = parseInt(req.query.page);
+    const jwtoken = req.headers['x-access-token'];
 
+    if (!validation.isValidePageIndex(page)) {
+        return res.json(resFormat(false, 200, 'parameter 값은 1이상의 정수 값이어야 합니다.'));
+    }
+    if(!jwtoken){
+        return res.json(resFormat(false, 201, '로그인후 사용가능한 기능입니다. '));
+    }
+    try{
+        const connection = await pool.getConnection(async conn => conn);
+        try {
+            // 유효한 토큰 검사
+            let jwtDecode = jwt.verify(jwtoken, secret_config.jwtsecret);
+            const userIdx = jwtDecode.userIdx;
+            const userId = jwtDecode.userId;
+            const checkTokenValideQuery = `select exists(select UserIdx from User where UserIdx = ? and UserId = ?) as exist;`;
+            const [isValidUser] = await connection.query(checkTokenValideQuery, [userIdx, userId]);
+            if (!isValidUser[0].exist) {
+                connection.release();
+                return res.json(resFormat(false, 204, '유효하지않는 토큰입니다.'));
+            }
+            const getSavePlayListQuery = `
+                                    select PlayListIdx,
+                                           UserPlayList.UserIdx,
+                                           U.UserId,
+                                           UserPlayList.VideoIdx,
+                                           V.VideoIdx,
+                                           V.TitleText,
+                                           V.Views,
+                                           U.ProfileUrl,
+                                           V.ThumUrl,
+                                           V.PlayTime,
+                                           V.CreatedAt
+                                    from UserPlayList
+                                             left outer join Videos V on UserPlayList.VideoIdx = V.VideoIdx
+                                             left outer join  User U on UserPlayList.UserIdx = U.UserIdx
+                                    where UserPlayList.UserIdx = ?
+                                    order by UserPlayList.CreatedAt DESC
+                                    limit 10 offset ?;
+                                    `;
+            const [getSavePlayList] = await connection.query(getSavePlayListQuery,[userIdx,parseInt((page-1)*10)]);
+            let resposeData = resFormat(true,100,'저장 영상 조회 성공');
+            resposeData.result = getSavePlayList;
 
+            console.log("get /saved-videos/:videoIdx");
+            connection.release();
+            return res.json(resposeData);
+        }catch (err) {
+            logger.error(`App - get /saved-videos/:videoIdx Query error\n: ${JSON.stringify(err)}`);
+            connection.release();
+            return res.json(resFormat(false, 290, 'get /saved-videos/:videoIdx 정보 query 중 오류가 발생하였습니다.'));
+        }
+    }catch (err) {
+        logger.error(`App - get /saved-videos/:videoIdx connection error\n: ${JSON.stringify(err)}`);
+        return res.json(resFormat(false, 299, 'DB connection error'));
+    }
+};
+/**
+ update : 2020.07.28
+ 14.save-videos = 나중에 볼 영상 리스트에 저장 및 삭제 api
+ **/
+exports.postSaveVideo = async function (req, res) {
+    const videoIdx = parseInt(req.params.videoIdx);
+    const jwtoken = req.headers['x-access-token'];
 
+    if (!validation.isValidePageIndex(videoIdx)) {
+        return res.json(resFormat(false, 200, 'parameter 값은 1이상의 정수 값이어야 합니다.'));
+    }
+    if (!jwtoken){
+        return res.json(resFormat(false, 201, '로그인후 사용가능한 기능입니다.'));
+    }
+    try{
+        const connection = await pool.getConnection(async conn => conn);
+        try{
+            // db에 비디오 인덱스 존재 판별
+            const videoExistQuery = `select exists(select VideoIdx from Videos where VideoIdx = ?) as exist;`;
+            const [isExists] = await connection.query(videoExistQuery, videoIdx);
+            if (!isExists[0].exist) {
+                connection.release();
+                return res.json(resFormat(false, 203, '존재하지 않는 비디오 인덱스 입니다.'))
+            }
+            // 유효한 토큰 검사
+            let jwtDecode = jwt.verify(jwtoken, secret_config.jwtsecret);
+            const userIdx = jwtDecode.userIdx;
+            const userId = jwtDecode.userId;
+            const checkTokenValideQuery = `select exists(select UserIdx from User where UserIdx = ? and UserId = ?) as exist;`;
+            const [isValidUser] = await connection.query(checkTokenValideQuery, [userIdx, userId]);
+            if (!isValidUser[0].exist) {
+                connection.release();
+                return res.json(resFormat(false, 204, '유효하지않는 토큰입니다.'));
+            }
 
-//temp api for test
-exports.signin = async function (req, res) {
-    let responseData = {};
+            const isExistInPlayListQuery = `select exists(select PlayListIdx from UserPlayList where UserIdx = ? and VideoIdx = ?) as exist;`;
+            const [isExistInPlayList] = await connection.query(isExistInPlayListQuery,[userIdx,videoIdx]);
+            //db에 isDeleted 토글
 
-    url = ''
+            let savePlayListStatus = '';
+            if(isExistInPlayList[0].exist){
+                const togglePlayListDeletedQuery = `update UserPlayList set IsDeleted = (if(IsDeleted='N','Y','N')) where UserIdx=? and VideoIdx=?;`;
+                await connection.beginTransaction();
+                await connection.query(togglePlayListDeletedQuery,[userIdx,videoIdx]);
+                await connection.commit();
 
-    res.json({test: "test"});
+                const getDeletedQuery = `select IsDeleted from UserPlayList where UserIdx = ? and VideoIdx = ? ;`;
+                const [getDeleted] = await connection.query(getDeletedQuery,[userIdx,videoIdx]);
 
-}
+                savePlayListStatus = getDeleted[0].IsDeleted === 'N'
+            }
+            else{
+                const insertPlayListQuery = `INSERT INTO UserPlayList(UserIdx, VideoIdx) values (?,?);`;
+                await connection.beginTransaction();
+                await connection.query(insertPlayListQuery,[userIdx,videoIdx]);
+                await connection.commit();
+                savePlayListStatus = true;
+            }
+
+            let responseData = resFormat(true,100,'나중에 볼 영상 설정 api 성공')
+            responseData.result = {savePlayListStatus : savePlayListStatus};
+
+            console.log('/saved-videos/:videoIdx post api ');
+            return res.json(responseData);
+        }catch (err) {
+            logger.error(`App - post /saved-videos/:videoIdx Query error\n: ${JSON.stringify(err)}`);
+            connection.release();
+            return res.json(resFormat(false, 290, 'post /saved-videos/:videoIdx 정보 query 중 오류가 발생하였습니다.'));
+        }
+    }catch (err) {
+        logger.error(`App - post /saved-videos/:videoIdx connection error\n: ${JSON.stringify(err)}`);
+        return res.json(resFormat(false, 299, 'DB connection error'));
+    }
+};
 
 function getRandomArr(maxListCount) {
     let randomArr = [];

@@ -11,7 +11,6 @@ const request = require('request');
 const resFormat = require('../../../config/responseMessages');
 
 var admin = require('firebase-admin');
-
 var serviceAccount = require("../../../config/serviceAccountKey.json");
 //var serviceAccount = require("path/to/serviceAccountKey.json");
 
@@ -19,7 +18,6 @@ admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
     databaseURL: "https://clone-e7f75.firebaseio.com"
 });
-
 
 //PATCH	/user/subscribe	채널 구독 갱신
 /**
@@ -98,8 +96,8 @@ exports.updateSubscribe = async function (req, res){
  18.video relate with subscribe API = 구독한 유저의 데이터 조회
  **/
 exports.getSubscribeData = async function (req, res){
-    const dataType = req.query.type; //todo videos,profile 등 추가될예정
-    const DEF_SUBSCRIBE_DATA_TYPE_LIST = ["videos","profile"];
+    const dataType = req.query.type;
+    const DEF_SUBSCRIBE_DATA_TYPE_LIST = ["videos"];
     const jwtoken = req.headers['x-access-token'];
     const page = req.query.page;
 
@@ -126,13 +124,15 @@ exports.getSubscribeData = async function (req, res){
                 connection.release();
                 return res.json(resFormat(false, 203, '유효하지않는 토큰입니다.'));
             }
-            //todo 필터링 작업 마져 다할 필요가 있
-            // 필터링
-            let responseData = resFormat(true,100,'구독 정보 조회 성공');
+            //todo
+            // 필터링 작업
+
+            let apiSuccessMessage = '';
             switch (dataType) {
                 case DEF_SUBSCRIBE_DATA_TYPE_LIST[0]://videos
                     const getSubscribeChannelVideoQuery = `select ChannelUserIdx,
                                                                    U.UserId,
+                                                                   V.VideoIdx,
                                                                    V.TitleText,
                                                                    V.Views,
                                                                    V.CreatedAt,
@@ -147,12 +147,14 @@ exports.getSubscribeData = async function (req, res){
                                                             `;
                     const [subscribeChannelVideos] = await connection.query(getSubscribeChannelVideoQuery,[userIdx,parseInt((page-1)*10)]);
                     responseData.result = subscribeChannelVideos;
+                    apiSuccessMessage = "구독 영상 조회 성공";
                     break;
-                case DEF_SUBSCRIBE_DATA_TYPE_LIST[1]://profile음
+                case DEF_SUBSCRIBE_DATA_TYPE_LIST[1]://
                     break;
             }
-
             connection.release();
+
+            let responseData = resFormat(true,100,apiSuccessMessage);
             return res.json(responseData);
         }catch (err){
             logger.error(`App -  get users/subscribe Query error\n: ${JSON.stringify(err)}`);
@@ -167,22 +169,61 @@ exports.getSubscribeData = async function (req, res){
 
 
 
-
 /**
- jwt token 용 api 테스트를 위해 임시 발급 api
- */
+ update : 2020.07.27
+ 21.login with firebase IdToken = 아이디 토큰으로 유저 가입또는 로그
+ **/
 exports.login = async function (req, res){
-    //todo 구글 로그인을 통해 아이디가 검증되어있다면 토큰을 발급
+    //id token이 넘어 왔으며 디비에 존재하면 로그인
+    // id token이 디비에 존재하지 않으면 자동 회원가입후 토큰발인
+    const idToken = req.headers['id-token'];
+    const googleId = req.body.googleId;
+    let userId = req.body.userId;
+    let userIdx = '';
+    if(!idToken){
+        return  res.json(resFormat(false,200,'id token 이 필요합니다.'));
+    }
+    if(!googleId || !userId){
+        return  res.json(resFormat(false,201,'body data 가 필요합니다.'));
+    }
+    if (!regexEmail.test(googleId)) {
+        return res.json({isSuccess: false, code: 301, message: "이메일을 형식을 정확하게 입력해주세요."});
+    }
+
     try{
         const connection = await pool.getConnection(async conn => conn);
         try{
-            const getUserIdxQuery = `select UserIdx from User where UserId='sun';`
-            const [getUserIdx] = await connection.query(getUserIdxQuery);
-            const userIdx = getUserIdx[0].UserIdx;
+            // id token 확인
+            const isExistIdTokenQuery =`select exists(select IdToken from User where IdToken= ? ) as exist;`;
+            const [isExistIdToken] = await connection.query(isExistIdTokenQuery,idToken);
 
+            let apiSuccessMessage = '';
+            //디비에 존재하지 않는다면 회원가입( 디비에 등록)
+            if (!isExistIdToken[0].exist) {
+                const isExistUserDataQuery = `select exists(select UserIdx from User where UserId= ? and GoogleId =? ) as exist;`;
+                const [isExistUserData] = await connection.query(isExistUserDataQuery,[userId,googleId]);
+                if(isExistUserData[0].exist){
+                   connection.release();
+                   return res.json(resFormat(false,202,'존재하는 아이디입니다. ID 토큰을 확인하여주세요.'));
+                }
+
+                const insertUserQuery = `insert into User(UserId, IdToken, GoogleId) values (?,?,?);`;
+                await connection.beginTransaction();
+                const insertUser = await connection.query(insertUserQuery,[userId,idToken,googleId]);
+                await connection.commit();
+                userIdx = insertUser[0].insertId;
+                apiSuccessMessage = '회원가입 성공';
+            }//디비에 존재한다면
+            else{
+                const getUserDataQuery = `select UserIdx,UserId from User where IdToken = ?;`;
+                const [getUserData] = await connection.query(getUserDataQuery,idToken);
+                userIdx = getUserData[0].UserIdx;
+                userId = getUserData[0].UserId;
+                apiSuccessMessage = '로그인 성공';
+            }
             let token = await jwt.sign({
                     userIdx: userIdx,
-                    userId: 'sun',
+                    userId: userId,
                 }, // 토큰의 내용(payload)
                 secret_config.jwtsecret, // 비밀 키
                 {
@@ -191,21 +232,31 @@ exports.login = async function (req, res){
                 } // 유효 시간은 365일
             );
             let responseData = {};
-            responseData = resFormat(true,100,'로그인 성공');
-            responseData.result = token;
+            responseData = resFormat(true,100,apiSuccessMessage);
+            responseData.result = {userIdx:userIdx,userId:userId,token:token};
 
             connection.release();
             res.json(responseData);
         }catch(err){
             connection.release();
-            logger.error(`App - /user login Query error\n: ${JSON.stringify(err)}`);
+            logger.error(`App - /user login/signUp Query error\n: ${JSON.stringify(err)}`);
             return res.json(statusFormat(false,290,'login api Query error'));
         }
     }catch (err) {
-        logger.error(`App - /user login connection error\n: ${JSON.stringify(err)}`);
+        logger.error(`App - /user login/signUp connection error\n: ${JSON.stringify(err)}`);
         return res.json(statusFormat(false,299,'login api connection error'));
     }
 }
+
+exports.check = async function (req, res) {
+    res.json({
+        isSuccess: true,
+        code: 200,
+        message: "검증 성공",
+        info: req.verifiedToken
+    })
+};
+
 
 
 /**
@@ -312,77 +363,77 @@ exports.login = async function (req, res){
  update : 2020.07.23
  02.signIn API = fire base 로그인
  **/
-exports.signUp = async function( req, res ){
-    // console.log('/app/signup (post)');
-    // const accessToken = req.headers['x-access-token'];
-    // const url = 'https://www.googleapis.com/youtube/v3/channels';
-    // let responseData = {};
-    //
-    //  request({
-    //     url: url,
-    //     method: 'GET',
-    //     qs:{
-    //         part:'id',
-    //         mine:true
-    //     },
-    //     headers:{
-    //             'Authorization': 'Bearer ' + accessToken
-    //         }
-    //     },function (err,responese,body) {
-    //         if(err) throw err;
-    //         responseData = JSON.parse(body);
-    //         if(!responseData.items){
-    //             res.json({isSuccess : false,code:'200',message:'유효하지 않은 토큰입니다. Request had invalid authentication credentials.'});
-    //         }
-    //         else{
-    //
-    //             res.json({isSuccess : true,code:'100',message:'회원 가입'});
-    //         }
-    //     });
-
-
-    // const idToken = req.headers['x-access-token'];
-    //
-    // //id 토큰 유효성 검사 코드
-    // let checkRevoked = true;
-    // admin.auth().verifyIdToken(idToken, checkRevoked)
-    //     .then(payload => {
-    //         // Token is valid.
-    //         console.log("s");
-    //     })
-    //     .catch(error => {
-    //         if (error.code == 'auth/id-token-revoked') {
-    //             // Token has been revoked. Inform the user to reauthenticate or signOut() the user.
-    //             console.log("revokde");
-    //         } else {
-    //             console.log("invalid");
-    //             // Token is invalid.
-    //         }
-    //     });
-
-    /*
-    //  id 토큰 디코딩 코
-    // console.log(idToken);
-    const idToken = "eyJhbGciOiJSUzI1NiIsImtpZCI6ImI2M2VlMGJlMDkzZDliYzMxMmQ5NThjOTk2NmQyMWYwYzhmNmJiYmIiLCJ0eXAiOiJKV1QifQ.eyJpc3MiOiJodHRwczovL2FjY291bnRzLmdvb2dsZS5jb20iLCJhenAiOiI3NjQzNDU2ODk1OC1pZzVlOWhzbnJmOHIwdDE5cW5xN2ZrOGw3aWlndXQ5OS5hcHBzLmdvb2dsZXVzZXJjb250ZW50LmNvbSIsImF1ZCI6Ijc2NDM0NTY4OTU4LXVtMm90OXRqbXYxYTdiNHM3Z2Q4ZXUwb3RxaGdrNzQ4LmFwcHMuZ29vZ2xldXNlcmNvbnRlbnQuY29tIiwic3ViIjoiMTEzNDk1NzYwMDMxNjA3MzU2MTE4IiwiZW1haWwiOiJzdXllb243OTc5QGdtYWlsLmNvbSIsImVtYWlsX3ZlcmlmaWVkIjp0cnVlLCJuYW1lIjoi6rmA7IiY7JewIiwicGljdHVyZSI6Imh0dHBzOi8vbGgzLmdvb2dsZXVzZXJjb250ZW50LmNvbS8tYkN4T0RLaE1FRzQvQUFBQUFBQUFBQUkvQUFBQUFBQUFBQUEvQU1adXVjbVBRT3YxSzZCZ3Q4Q18xWWlnMlJ3Qmt5ZHFDdy9zOTYtYy9waG90by5qcGciLCJnaXZlbl9uYW1lIjoi7IiY7JewIiwiZmFtaWx5X25hbWUiOiLquYAiLCJsb2NhbGUiOiJrbyIsImlhdCI6MTU5NTgzMTg2MywiZXhwIjoxNTk1ODM1NDYzfQ.MarI0WpKCD-qT3lnwEJayG9zD_zhIVRzQGlEGv45FT6CBbNLTDdxDCe87Tvz6NicihmqOHn17CyD5rK4hR0VqNGwBxl8B7K4NZI4josB7Cgjcm54Ce8CIGuiS8WlRHWW5akxweicQHYljiq8K7IKp2pfOI5k-Ev6qOct0C-3hNv-V3az9hr1ZplnQEHz2H0yQaLX6Luxb1_axd6AizqoLFiuv6Co02OQJqfd5V0TlvvtEtb-1PctUtfJ1Zz1pG2zRhIZILpzcWOdL-gu6K8jNeUMZ5Qm5Y3cZMcTfzJ8MovaEjkE0xUdRkweV2ZRawRO0PsAqo5zdqBw7acRTewkpw";
-    admin.auth().verifyIdToken(idToken)
-        .then(function(decodedToken) {
-            let uid = decodedToken.uid;
-            console.log(uid);
-            res.json({test:'test'});
-
-            // ...
-        }).catch(function(error) {
-            res.json(error);
-
-        // Handle error
-    });
-    */
-
-
-
-    // res.json({test: 'test'});
-
-}
+// exports.signUp = async function( req, res ){
+//     // console.log('/app/signup (post)');
+//     // const accessToken = req.headers['x-access-token'];
+//     // const url = 'https://www.googleapis.com/youtube/v3/channels';
+//     // let responseData = {};
+//     //
+//     //  request({
+//     //     url: url,
+//     //     method: 'GET',
+//     //     qs:{
+//     //         part:'id',
+//     //         mine:true
+//     //     },
+//     //     headers:{
+//     //             'Authorization': 'Bearer ' + accessToken
+//     //         }
+//     //     },function (err,responese,body) {
+//     //         if(err) throw err;
+//     //         responseData = JSON.parse(body);
+//     //         if(!responseData.items){
+//     //             res.json({isSuccess : false,code:'200',message:'유효하지 않은 토큰입니다. Request had invalid authentication credentials.'});
+//     //         }
+//     //         else{
+//     //
+//     //             res.json({isSuccess : true,code:'100',message:'회원 가입'});
+//     //         }
+//     //     });
+//
+//
+//     // const idToken = req.headers['x-access-token'];
+//     //
+//     // //id 토큰 유효성 검사 코드
+//     // let checkRevoked = true;
+//     // admin.auth().verifyIdToken(idToken, checkRevoked)
+//     //     .then(payload => {
+//     //         // Token is valid.
+//     //         console.log("s");
+//     //     })
+//     //     .catch(error => {
+//     //         if (error.code == 'auth/id-token-revoked') {
+//     //             // Token has been revoked. Inform the user to reauthenticate or signOut() the user.
+//     //             console.log("revokde");
+//     //         } else {
+//     //             console.log("invalid");
+//     //             // Token is invalid.
+//     //         }
+//     //     });
+//
+//     /*
+//     //  id 토큰 디코딩 코
+//     // console.log(idToken);
+//     const idToken = "eyJhbGciOiJSUzI1NiIsImtpZCI6ImI2M2VlMGJlMDkzZDliYzMxMmQ5NThjOTk2NmQyMWYwYzhmNmJiYmIiLCJ0eXAiOiJKV1QifQ.eyJpc3MiOiJodHRwczovL2FjY291bnRzLmdvb2dsZS5jb20iLCJhenAiOiI3NjQzNDU2ODk1OC1pZzVlOWhzbnJmOHIwdDE5cW5xN2ZrOGw3aWlndXQ5OS5hcHBzLmdvb2dsZXVzZXJjb250ZW50LmNvbSIsImF1ZCI6Ijc2NDM0NTY4OTU4LXVtMm90OXRqbXYxYTdiNHM3Z2Q4ZXUwb3RxaGdrNzQ4LmFwcHMuZ29vZ2xldXNlcmNvbnRlbnQuY29tIiwic3ViIjoiMTEzNDk1NzYwMDMxNjA3MzU2MTE4IiwiZW1haWwiOiJzdXllb243OTc5QGdtYWlsLmNvbSIsImVtYWlsX3ZlcmlmaWVkIjp0cnVlLCJuYW1lIjoi6rmA7IiY7JewIiwicGljdHVyZSI6Imh0dHBzOi8vbGgzLmdvb2dsZXVzZXJjb250ZW50LmNvbS8tYkN4T0RLaE1FRzQvQUFBQUFBQUFBQUkvQUFBQUFBQUFBQUEvQU1adXVjbVBRT3YxSzZCZ3Q4Q18xWWlnMlJ3Qmt5ZHFDdy9zOTYtYy9waG90by5qcGciLCJnaXZlbl9uYW1lIjoi7IiY7JewIiwiZmFtaWx5X25hbWUiOiLquYAiLCJsb2NhbGUiOiJrbyIsImlhdCI6MTU5NTgzMTg2MywiZXhwIjoxNTk1ODM1NDYzfQ.MarI0WpKCD-qT3lnwEJayG9zD_zhIVRzQGlEGv45FT6CBbNLTDdxDCe87Tvz6NicihmqOHn17CyD5rK4hR0VqNGwBxl8B7K4NZI4josB7Cgjcm54Ce8CIGuiS8WlRHWW5akxweicQHYljiq8K7IKp2pfOI5k-Ev6qOct0C-3hNv-V3az9hr1ZplnQEHz2H0yQaLX6Luxb1_axd6AizqoLFiuv6Co02OQJqfd5V0TlvvtEtb-1PctUtfJ1Zz1pG2zRhIZILpzcWOdL-gu6K8jNeUMZ5Qm5Y3cZMcTfzJ8MovaEjkE0xUdRkweV2ZRawRO0PsAqo5zdqBw7acRTewkpw";
+//     admin.auth().verifyIdToken(idToken)
+//         .then(function(decodedToken) {
+//             let uid = decodedToken.uid;
+//             console.log(uid);
+//             res.json({test:'test'});
+//
+//             // ...
+//         }).catch(function(error) {
+//             res.json(error);
+//
+//         // Handle error
+//     });
+//     */
+//
+//
+//
+//     // res.json({test: 'test'});
+//
+// }
 
 /**
  update : 2019.11.01
@@ -490,11 +541,3 @@ exports.signUp = async function( req, res ){
  update : 2019.09.23
  03.check API = token 검증
  **/
-exports.check = async function (req, res) {
-    res.json({
-        isSuccess: true,
-        code: 200,
-        message: "검증 성공",
-        info: req.verifiedToken
-    })
-};

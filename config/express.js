@@ -22,6 +22,7 @@ module.exports = function () {
     require('../src/app/routes/videoRoute')(app);
     require('../src/app/routes/commentRoute')(app);
 
+
     /* Web */
     // require('../src/web/routes/indexRoute')(app);
 
