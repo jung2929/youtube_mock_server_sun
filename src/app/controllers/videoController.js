@@ -280,7 +280,7 @@ exports.getWatch = async function (req, res) {
 
             // 비디오 상세정보 조회
             const videoInfoQuery = `
-            select Videos.VideoIdx,
+           select Videos.VideoIdx,
                    U.UserIdx,
                    Videos.UserId,
                    TitleText,
@@ -290,6 +290,9 @@ exports.getWatch = async function (req, res) {
                    DislikesCount,
                    U.SubscribeCount,
                    CommentsCount,
+                   case
+                       when isnull(UP.IsDeleted) then 'false'
+                       else case when UP.IsDeleted = 'N' then 'true' else 'false' end end as SaveStatus,
                    case when isnull(UL.LikeStatus) then 0 else UL.LikeStatus end          as LikeStatus,
                    case
                        when isnull(US.IsDeleted) then 'false'
@@ -301,10 +304,11 @@ exports.getWatch = async function (req, res) {
             from Videos
                      left outer join User U on U.UserId = Videos.UserId
                      left outer join UserLikes UL on UL.VideoIdx = Videos.VideoIdx and UL.UserIdx = ?
-                     left outer join UserSubscribes US on US.UserIdx=? and U.UserIdx = US.ChannelUserIdx
+                     left outer join UserSubscribes US on US.UserIdx = ? and U.UserIdx = US.ChannelUserIdx
+                    left outer join UserPlayList UP on UP.UserIdx = ? and UP.VideoIdx = ?
             where Videos.VideoIdx = ?;
 `;
-            const [videoInfo] = await connection.query(videoInfoQuery, [userIdxForLikeStatus,userIdxForLikeStatus,videoIdx]);
+            const [videoInfo] = await connection.query(videoInfoQuery, [userIdxForLikeStatus,userIdxForLikeStatus,userIdxForLikeStatus,videoIdx,videoIdx]);
             let resultArr = {};
             resultArr.videoInfo = videoInfo[0];
 
@@ -576,6 +580,7 @@ exports.postSaveVideo = async function (req, res) {
             let responseData = resFormat(true,100,'나중에 볼 영상 설정 api 성공')
             responseData.result = {savePlayListStatus : savePlayListStatus};
 
+            connection.release();
             console.log('/saved-videos/:videoIdx post api ');
             return res.json(responseData);
         }catch (err) {
@@ -588,6 +593,13 @@ exports.postSaveVideo = async function (req, res) {
         return res.json(resFormat(false, 299, 'DB connection error'));
     }
 };
+/**
+ update : 2020.07.28
+ 20./videos/:videoIdx/play-time = play time 기록
+ **/
+exports.updatePlayTime = async function (req, res) {
+
+}
 
 function getRandomArr(maxListCount) {
     let randomArr = [];

@@ -80,6 +80,7 @@ exports.updateSubscribe = async function (req, res){
             responseData.result = {userIdx:userIdx,channelUserIdx:channelUserIdx,SubscribeStatus:subscribeStatus};
 
             connection.release();
+            console.log("post - user/subscribe ")
             return res.json(responseData);
         } catch(err){
             logger.error(`App - user/subscribe Query error\n: ${JSON.stringify(err)}`);

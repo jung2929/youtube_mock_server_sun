@@ -12,4 +12,5 @@ module.exports = function(app){
     app.patch('/videos/:videoIdx/likes',video.updateLikes);
     app.route('/saved-videos/:videoIdx').post(video.postSaveVideo);
     app.get('/saved-videos',video.getSaveVideo)
+    app.patch('/videos/:videoIdx/play-time',video.updatePlayTime)
 };
