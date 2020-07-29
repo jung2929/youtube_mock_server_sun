@@ -138,6 +138,7 @@ exports.getSubscribeData = async function (req, res){
                                                                    V.Views,
                                                                    V.CreatedAt,
                                                                    V.ThumUrl,
+                                                                   V.PlayTime,
                                                                    U.ProfileUrl
                                                             from UserSubscribes
                                                                      left outer join User U on UserSubscribes.ChannelUserIdx = U.UserIdx
@@ -160,6 +161,7 @@ exports.getSubscribeData = async function (req, res){
                                                                            V.CreatedAt,
                                                                            V.ThumUrl,
                                                                            U.ProfileUrl,
+                                                                           V.PlayTime,
                                                                            UW.WatchingTime
                                                                     from UserSubscribes
                                                                              left outer join User U on UserSubscribes.ChannelUserIdx = U.UserIdx
@@ -183,6 +185,7 @@ exports.getSubscribeData = async function (req, res){
                                                                            V.CreatedAt,
                                                                            V.ThumUrl,
                                                                            U.ProfileUrl,
+                                                                           V.PlayTime,
                                                                            UW.WatchingTime
                                                                     from UserSubscribes
                                                                              left outer join User U on UserSubscribes.ChannelUserIdx = U.UserIdx
@@ -219,8 +222,6 @@ exports.getSubscribeData = async function (req, res){
                     break;
             }
             connection.release();
-
-
             return res.json(responseData);
         }catch (err){
             logger.error(`App -  get users/subscribe Query error\n: ${JSON.stringify(err)}`);
@@ -282,6 +283,91 @@ exports.getSubscribeProfile = async function (req, res){
         return res.json(resFormat(false, 299, 'DB connection error'));
     }
 }
+/**
+ update : 2020.07.2
+ 19.video relate with subscribe API = 구독한 유저 하나의 영상과 커뮤니티 조회
+ **/
+exports.getSubscribeChannel = async function(req, res){
+    const jwtoken = req.headers['x-access-token'];
+    const userIdx = req.params.userIdx;
+    const channelIdx = req.params.channelIdx;
+    //정수 검사
+    if (!(validation.isValidePageIndex(userIdx)&&validation.isValidePageIndex(channelIdx))) {
+        return res.json(resFormat(false, 200, 'parameter 값은 1이상의 정수 값이어야 합니다.'));
+    }
+    // 토큰 검사
+    if(!jwtoken){
+        return res.json(resFormat(false, 202, '로그인후 사용가능한 기능입니다.'));
+    }
+    try{
+        const connection = await pool.getConnection(async conn => conn);
+        try{
+            // 유효한 토큰 검사
+            let jwtDecode = jwt.verify(jwtoken, secret_config.jwtsecret);
+            const userIdx = jwtDecode.userIdx;
+            const userId = jwtDecode.userId;
+            const checkTokenValideQuery = `select exists(select UserIdx from User where UserIdx = ? and UserId = ?) as exist;`;
+            const [isValidUser] = await connection.query(checkTokenValideQuery, [userIdx, userId]);
+            if (!isValidUser[0].exist) {
+                connection.release();
+                return res.json(resFormat(false, 203, '유효하지않는 토큰입니다.'));
+            }
+
+            const getSubscribeChannelQuery = `
+                   select ChannelUserIdx,
+                           U.UserId,
+                           V.VideoIdx,
+                           V.TitleText,
+                           V.Views,
+                           V.CreatedAt,
+                           V.ThumUrl,
+                           U.ProfileUrl,
+                           V.PlayTime,
+                           UW.WatchingTime
+                    from UserSubscribes
+                             left outer join User U on UserSubscribes.ChannelUserIdx = U.UserIdx
+                             left outer join Videos V on U.UserId = V.UserId
+                             left outer join UserWatchHistory UW on UW.VideoIdx = V.VideoIdx
+                    where UserSubscribes.UserIdx = ? and UserSubscribes.ChannelUserIdx =?
+                    order by V.CreatedAt desc
+                    `;
+            const getSuvscribeChannelCommunityQuery = `
+                    select CommunityIdx,
+                           U.UserIdx,
+                           UserCommunity.UserId,
+                           MainText,
+                           LikesCount,
+                           DislikesCount,
+                           ImgUrl,
+                           U.ProfileUrl,
+                           CommentCount,
+                           UserCommunity.CreatedAt
+                    from UserCommunity
+                             left outer join User U on UserCommunity.UserId = U.UserId
+                             left outer join UserSubscribes US on US.ChannelUserIdx = U.UserIdx
+                    where US.UserIdx = ? and US.ChannelUserIdx=?;
+                    `;
+            const [getSubscribeChannel] = await connection.query(getSubscribeChannelQuery,[userIdx,channelIdx]);
+            const [getSuvscribeChannelCommunity] = await connection.query(getSuvscribeChannelCommunityQuery,[userIdx,channelIdx]);
+            let resultArr = {};
+            resultArr.videos = getSubscribeChannel;
+            resultArr.community = getSuvscribeChannelCommunity;
+            let responseData = resFormat(true,100,"구독유저 영상,게시 조회 성공");
+            responseData.result = resultArr;
+
+            return res.json(responseData);
+
+        }catch (err) {
+            logger.error(`App -  get users/subscribe/:channelIdx Query error\n: ${JSON.stringify(err)}`);
+            connection.release();
+            return res.json(resFormat(false, 290, 'get users/subscribe/:channelIdx query 중 오류가 발생하였습니다.'));
+        }
+    }catch (err) {
+        logger.error(`App - get users/subscribe/:channelIdx connection error\n: ${JSON.stringify(err)}`);
+        return res.json(resFormat(false, 299, 'DB connection error'));
+    }
+}
+
 
 
 /**
