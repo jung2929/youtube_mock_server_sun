@@ -12,13 +12,13 @@ const resFormat = require('../../../config/responseMessages');
 
 var admin = require('firebase-admin');
 var serviceAccount = require("../../../config/serviceAccountKey.json");
-//var serviceAccount = require("path/to/serviceAccountKey.json");
-
 
 admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
     databaseURL: "https://clone-e7f75.firebaseio.com"
 });
+
+
 
 //PATCH	/user/subscribe	채널 구독 갱신
 /**
@@ -282,9 +282,9 @@ exports.getSubscribeProfile = async function (req, res){
         logger.error(`App - get users/subscribe connection error\n: ${JSON.stringify(err)}`);
         return res.json(resFormat(false, 299, 'DB connection error'));
     }
-}
+};
 /**
- update : 2020.07.2
+ update : 2020.07.29
  19.video relate with subscribe API = 구독한 유저 하나의 영상과 커뮤니티 조회
  **/
 exports.getSubscribeChannel = async function(req, res){
@@ -355,6 +355,7 @@ exports.getSubscribeChannel = async function(req, res){
             let responseData = resFormat(true,100,"구독유저 영상,게시 조회 성공");
             responseData.result = resultArr;
 
+            connection.release();
             return res.json(responseData);
 
         }catch (err) {
@@ -366,8 +367,7 @@ exports.getSubscribeChannel = async function(req, res){
         logger.error(`App - get users/subscribe/:channelIdx connection error\n: ${JSON.stringify(err)}`);
         return res.json(resFormat(false, 299, 'DB connection error'));
     }
-}
-
+};
 
 
 /**
@@ -447,7 +447,7 @@ exports.login = async function (req, res){
         logger.error(`App - /user login/signUp connection error\n: ${JSON.stringify(err)}`);
         return res.json(statusFormat(false,299,'login api connection error'));
     }
-}
+};
 /**
  update : 2020.07.27
  xx.check token

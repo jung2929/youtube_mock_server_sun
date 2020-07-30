@@ -274,8 +274,11 @@ exports.getWatch = async function (req, res) {
 
             //비디오 조회시 조횟수 증가
             const addVideoViewsQuery = `update Videos set Views = Views + 1 where Videos.VideoIdx=?;`
+            const addWatchCountQuery = `update UserWatchHistory set WatchCount = WatchCount + 1 where UserIdx = ? and VideoIdx = ?;`;
+
             await connection.beginTransaction();
             await connection.query(addVideoViewsQuery,videoIdx);
+            await connection.query(addWatchCountQuery,[userIdx,videoIdx]);
             await connection.commit();
 
             // 비디오 상세정보 조회
