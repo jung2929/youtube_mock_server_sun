@@ -6,6 +6,7 @@ module.exports = function(app){
     // app.route('/app/signIn').post(user.signIn);
 
     app.get('/videos',video.getVideo);
+    app.route('/videos').post(video.postVideo);
     app.get('/story-videos',video.getStory);
     app.get('/community-posts',video.getCommunity);
     app.get('/videos/:videoIdx',video.getWatch);

@@ -10,13 +10,13 @@ const secret_config = require('../../../config/secret');
 const request = require('request');
 const resFormat = require('../../../config/responseMessages');
 
-var admin = require('firebase-admin');
-var serviceAccount = require("../../../config/serviceAccountKey.json");
-
-admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount),
-    databaseURL: "https://clone-e7f75.firebaseio.com"
-});
+// var admin = require('firebase-admin');
+// var serviceAccount = require("../../../config/serviceAccountKey.json");
+//
+// admin.initializeApp({
+//     credential: admin.credential.cert(serviceAccount),
+//     databaseURL: "https://clone-e7f75.firebaseio.com"
+// });
 
 
 

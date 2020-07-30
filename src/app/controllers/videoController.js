@@ -12,6 +12,15 @@ const {google} = require('googleapis');
 const request = require('request');
 const moment = require('moment');
 
+var admin = require('firebase-admin');
+var serviceAccount = require("../../../config/serviceAccountKey.json");
+
+admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount),
+    databaseURL: "https://clone-e7f75.firebaseio.com"
+});
+
+
 const DEF_HOME_PAGE_INDEX = 1;
 let videoArr = [];
 let communityArr = [];
@@ -22,7 +31,7 @@ let communityArr = [];
  **/
 exports.getVideo = async function (req, res) {
     const queryPage = Number(req.query.page);
-
+    const jwtoken = req.headers['x-access-token'];
     if (!validation.isValidePageIndex(queryPage)) {
         return res.json(resFormat(false, 200, 'parameter 값은 1이상의 정수 값이어야 합니다.'));
     }
@@ -33,15 +42,46 @@ exports.getVideo = async function (req, res) {
             const countVideoQuery = `select count(VideoIdx) as videoCount from Videos ;`
             const [videoCount] = await connection.query(countVideoQuery);
             const maxListCount = videoCount[0].videoCount;
+            // 유효한 토큰 검사
+            let jwtDecode = jwt.verify(jwtoken, secret_config.jwtsecret);
+            const userIdx = jwtDecode.userIdx;
+            const userId = jwtDecode.userId;
+            const checkTokenValideQuery = `select exists(select UserIdx from User where UserIdx = ? and UserId = ?) as exist;`;
+            const [isValidUser] = await connection.query(checkTokenValideQuery, [userIdx, userId]);
+            if (!isValidUser[0].exist) {
+                connection.release();
+                return res.json(resFormat(false, 204, '유효하지않는 토큰입니다.'));
+            }
+
 
             //무한 스크롤를 위한 처리
             const temp = parseInt(queryPage % parseInt((maxListCount / 10) + 1))
             let page = temp === 0 ? 3 : temp;
 
             if (page === DEF_HOME_PAGE_INDEX || videoArr.length <= 1) {
-                videoArr = getRandomArr(maxListCount);
+                //토큰이 있을때 추천 알고리즘
+                videoArr = await getRandomArr(maxListCount);
+                // if(jwtoken){
+                //     const getHistoryDataQuery = `
+                //     select UW.VideoIdx,
+                //            WatchCount,
+                //            WatchingTime,
+                //            V.Category,
+                //            VC.CatName
+                //     from UserWatchHistory as UW
+                //     left outer join Videos V on UW.VideoIdx = V.VideoIdx
+                //     left outer join VideoCategoryDef VC on V.Category = VC.CatIdx
+                //     where UserIdx = ?
+                //     order by WatchCount desc ;
+                // `;
+                //     const [getHistoryData] = await connection.query(getHistoryDataQuery,userIdx)
+                //     //todo
+                //     videoArr = await getRecommendArr(maxListCount,getHistoryData);
+                // }// 토큰이 없을때 랜덤 배열
+                // else{
+                //     videoArr = await getRandomArr(maxListCount);
+                // }
             }
-
             const videoListQuery = `
                 select VideoIdx,
                        Videos.UserId,
@@ -76,7 +116,6 @@ exports.getVideo = async function (req, res) {
                 order by field(VideoIdx, ?)
                 limit 10 offset ?;
                 `;
-
             const [videoRows] = await connection.query(videoListQuery, [videoArr, 10 * (page - 1)]);
 
             let resultArr = {};
@@ -269,16 +308,16 @@ exports.getWatch = async function (req, res) {
                     const watchInsertHistoryQuery = 'insert into UserWatchHistory(UserIdx, UserId, VideoIdx) values(?,?,?);';
                     await connection.query(watchInsertHistoryQuery, insertHistoryParams);
                 }
+                const addWatchCountQuery = `update UserWatchHistory set WatchCount = WatchCount + 1 where UserIdx = ? and VideoIdx = ?;`;
+                await connection.query(addWatchCountQuery,[userIdx,videoIdx]);
                 await connection.commit();
             }
 
             //비디오 조회시 조횟수 증가
             const addVideoViewsQuery = `update Videos set Views = Views + 1 where Videos.VideoIdx=?;`
-            const addWatchCountQuery = `update UserWatchHistory set WatchCount = WatchCount + 1 where UserIdx = ? and VideoIdx = ?;`;
 
             await connection.beginTransaction();
             await connection.query(addVideoViewsQuery,videoIdx);
-            await connection.query(addWatchCountQuery,[userIdx,videoIdx]);
             await connection.commit();
 
             // 비디오 상세정보 조회
@@ -664,7 +703,47 @@ exports.updatePlayTime = async function (req, res) {
         return res.json(resFormat(false, 299, 'DB connection error'));
     }
 };
+/**
+ update : 2020.07.30
+ 23./videos = 비디오 업로드
+ **/
+exports.postVideo = async function (req, res) {
+    try{
+        var registrationToken = 'c0TMqyI3AMo:APA91bHkkU1U_G85c0rjY0yS1_bu7SmfKR_jQZ68yowPUGadKypxPjDfBq6hNBWuwb1ArDteodcW63EChvJ6_EGkRbysxQdbhRWyz8taFO2tlbVGFXUgfwZHi_EAAdKFahLfYObjtrU3';
 
+        var fcmMessage = {
+            data: {
+                title: 'sub) 기가지니 - 백수 일상 브이로그',
+                body: '멸치 myeolchi',
+                videoIdx: '11',
+                playTime : '13:30',
+                ProfileUrl: 'https://firebasestorage.googleapis.com/v0/b/clone-e7f75.appspot.com/o/profile%2F%E1%84%86%E1%85%A7%E1%86%AF%E1%84%8E%E1%85%B5%20myeolchi.png?alt=media&token=8e32f5c8-4321-4b29-acfb-cff8353900cf',
+                ThumUrl: 'https://firebasestorage.googleapis.com/v0/b/clone-e7f75.appspot.com/o/thumnail%2Fsub)%20%E1%84%80%E1%85%B5%E1%84%80%E1%85%A1%E1%84%8C%E1%85%B5%E1%84%82%E1%85%B5%20-%20%E1%84%87%E1%85%A2%E1%86%A8%E1%84%89%E1%85%AE%20%E1%84%8B%E1%85%B5%E1%86%AF%E1%84%89%E1%85%A1%E1%86%BC%20%E1%84%87%E1%85%B3%E1%84%8B%E1%85%B5%E1%84%85%E1%85%A9%E1%84%80%E1%85%B3.png?alt=media&token=31a1280f-3996-4346-bdf6-8259adcbed74',
+                CreateAt: '2020-07-18 18:09:55'
+            },
+            token: registrationToken
+        };
+
+        // Send a message to the device corresponding to the provided
+        // registration token.
+        admin.messaging().send(fcmMessage)
+            .then((response) => {
+                // Response is a message ID string.
+                console.log('Successfully sent message:', response);
+                return res.json(resFormat(true,100,'test success'));
+            })
+            .catch((error) => {
+                console.log('Error sending message:', error);
+                return res.json(resFormat(false,200,'test fail'));
+            });
+    }catch (err) {
+        logger.error(`App - video upload test api connection error\n: ${JSON.stringify(err)}`);
+        return res.json(resFormat(false, 299, 'video upload test api  connection error'));
+    }
+};
+
+
+// video random 배열 함수
 function getRandomArr(maxListCount) {
     let randomArr = [];
 
@@ -679,4 +758,40 @@ function getRandomArr(maxListCount) {
     }
 
     return randomArr;
+}
+// video 추천 알고리즘
+function getRecommendArr(maxListCount,historyData){
+    let userData = [];
+    for (let data in historyData){
+        let watchCount = historyData[data].WatchCount;
+        let watchTime = historyData[data].WatchingTime;
+        let catNum = historyData[data].Category;
+
+        let watchTimeParser = watchTime.split(':');
+        let watchTimePoint = (parseInt(watchTimeParser[0])*60)+parseInt(watchTimeParser[1]);
+
+        let innerUserData = [];
+        innerUserData[0] = catNum;
+        innerUserData[1] = watchCount + watchTimePoint;
+
+        userData[data] = innerUserData;
+    }
+    console.log(userData);
+    let numList = [];
+    for (let i=0; i<10;i++) {
+        numList[i] = 0;
+    }
+
+    for (let i=0; i<userData.length;i++){
+        numList[userData[i][0]-1] +=userData[i][1];
+    }
+    let resultList = [];
+    for (let i=0; i<numList.length;i++){
+        let innerList = [];
+        innerList[0] = numList[i];
+        innerList[1] = i+1;
+        resultList[i] = innerList;
+    }
+    console.log(resultList);
+    return resultList;
 }
