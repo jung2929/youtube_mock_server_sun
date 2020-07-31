@@ -107,23 +107,38 @@ exports.getComment = async function (req, res) {
             }
             // paging 댓글 조회
             const getCommentQuery = `
-            select CommentsIdx,
-                   Comments.UserIdx,
-                   U.UserId,
-                   U.ProfileUrl,
-                   CmtReplyCount,
-                   VideoIdx,
-                   CommentText,
-                   LikesCount,
-                   LikesStatus,
-                   CmtReplyCount,
-                   Comments.CreatedAt
-            from Comments
-            left outer join User U on Comments.UserIdx = U.UserIdx
-            where VideoIdx = ?
-              and Comments.IsDeleted = 'N'
-            order by Comments.CreatedAt desc
-            limit ? offset ?;
+                                    select CommentsIdx,
+                                           Comments.UserIdx,
+                                           U.UserId,
+                                           U.ProfileUrl,
+                                           CmtReplyCount,
+                                           VideoIdx,
+                                           CommentText,
+                                           LikesCount,
+                                           LikesStatus,
+                                           CmtReplyCount,
+                                           case
+                                               when TIMESTAMPDIFF(SECOND, Comments.CreatedAt, CURRENT_TIMESTAMP) < 60
+                                                   then concat(TIMESTAMPDIFF(SECOND, Comments.CreatedAt, CURRENT_TIMESTAMP), '초 전')
+                                               else case
+                                                        when TIMESTAMPDIFF(minute, Comments.CreatedAt, CURRENT_TIMESTAMP) < 60
+                                                            then concat(TIMESTAMPDIFF(minute, Comments.CreatedAt, CURRENT_TIMESTAMP), '분 전')
+                                                        else case
+                                                                 when TIMESTAMPDIFF(HOUR, Comments.CreatedAt, CURRENT_TIMESTAMP) < 24
+                                                                     then concat(TIMESTAMPDIFF(HOUR, Comments.CreatedAt, CURRENT_TIMESTAMP), '시간 전')
+                                                                 else case
+                                                                          when TIMESTAMPDIFF(day, Comments.CreatedAt, CURRENT_TIMESTAMP) < 30
+                                                                              then concat(TIMESTAMPDIFF(day, Comments.CreatedAt, CURRENT_TIMESTAMP), '일 전')
+                                                                     end
+                                                            end
+                                                   end
+                                               end                                                                as CreatedAt
+                                    from Comments
+                                    left outer join User U on Comments.UserIdx = U.UserIdx
+                                    where VideoIdx = ?
+                                      and Comments.IsDeleted = 'N'
+                                    order by Comments.CreatedAt desc
+                                    limit ? offset ?;
             `;
             const [CommentsArr] = await connection.query(getCommentQuery,[videoIdx,pagingCount,(page-1)*10]);
 
@@ -400,12 +415,27 @@ exports.postReply = async function (req ,res) {
 
             const replyIdx = getReplyIdx[0].insertId;
             const getUserDataQuery = `
-                                    select CommentsReply.CreatedAt,
-                                           U.ProfileUrl
-                                    from CommentsReply
-                                    left outer join User U on CommentsReply.UserIdx = U.UserIdx
-                                    where CommentsReply.UserIdx = ?
-                                      and CmtReplyIdx = ?;
+                                    select case
+                                           when TIMESTAMPDIFF(SECOND, CommentsReply.CreatedAt, CURRENT_TIMESTAMP) < 60
+                                               then concat(TIMESTAMPDIFF(SECOND, CommentsReply.CreatedAt, CURRENT_TIMESTAMP), '초 전')
+                                           else case
+                                                    when TIMESTAMPDIFF(minute, CommentsReply.CreatedAt, CURRENT_TIMESTAMP) < 60
+                                                        then concat(TIMESTAMPDIFF(minute, CommentsReply.CreatedAt, CURRENT_TIMESTAMP), '분 전')
+                                                    else case
+                                                             when TIMESTAMPDIFF(HOUR, CommentsReply.CreatedAt, CURRENT_TIMESTAMP) < 24
+                                                                 then concat(TIMESTAMPDIFF(HOUR, CommentsReply.CreatedAt, CURRENT_TIMESTAMP), '시간 전')
+                                                             else case
+                                                                      when TIMESTAMPDIFF(day, CommentsReply.CreatedAt, CURRENT_TIMESTAMP) < 30
+                                                                          then concat(TIMESTAMPDIFF(day, CommentsReply.CreatedAt, CURRENT_TIMESTAMP), '일 전')
+                                                                 end
+                                                        end
+                                               end
+                                           end as CreatedAt,
+                                       U.ProfileUrl
+                                from CommentsReply
+                                         left outer join User U on CommentsReply.UserIdx = U.UserIdx
+                                where CommentsReply.UserIdx = ?
+                                  and CmtReplyIdx = ?;
                                              `;
             const [getUserData] = await connection.query(getUserDataQuery,[userIdx,replyIdx]);
 
@@ -418,7 +448,7 @@ exports.postReply = async function (req ,res) {
                 replyIdx: replyIdx,
                 replyText: replyText,
                 ProfileUrl: getUserData[0].ProfileUrl,
-                CreateAt : getUserData[0].CreatedAt
+                CreatedAt : getUserData[0].CreatedAt
             };
 
             console.log("post reply api");

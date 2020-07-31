@@ -347,7 +347,7 @@ exports.getWatch = async function (req, res) {
                    CommentsCount,
                    case
                        when isnull(UP.IsDeleted) then 'false'
-                       else case when UP.IsDeleted = 'N' then true else false end end as SaveStatus,
+                       else case when UP.IsDeleted = 'N' then true else false end end     as SaveStatus,
                    case when isnull(UL.LikeStatus) then 0 else UL.LikeStatus end          as LikeStatus,
                    case
                        when isnull(US.IsDeleted) then 'false'
@@ -355,14 +355,29 @@ exports.getWatch = async function (req, res) {
                    VideoUrl,
                    U.ProfileUrl,
                    UW.WatchingTime,
-                   Videos.CreatedAt
+                   case
+                       when TIMESTAMPDIFF(SECOND, Videos.CreatedAt, CURRENT_TIMESTAMP) < 60
+                           then concat(TIMESTAMPDIFF(SECOND, Videos.CreatedAt, CURRENT_TIMESTAMP), '초 전')
+                       else case
+                                when TIMESTAMPDIFF(minute, Videos.CreatedAt, CURRENT_TIMESTAMP) < 60
+                                    then concat(TIMESTAMPDIFF(minute, Videos.CreatedAt, CURRENT_TIMESTAMP), '분 전')
+                                else case
+                                         when TIMESTAMPDIFF(HOUR, Videos.CreatedAt, CURRENT_TIMESTAMP) < 24
+                                             then concat(TIMESTAMPDIFF(HOUR, Videos.CreatedAt, CURRENT_TIMESTAMP), '시간 전')
+                                         else case
+                                                  when TIMESTAMPDIFF(day, Videos.CreatedAt, CURRENT_TIMESTAMP) < 30
+                                                      then concat(TIMESTAMPDIFF(day, Videos.CreatedAt, CURRENT_TIMESTAMP), '일 전')
+                                             end
+                                    end
+                           end
+                       end                                                                as CreatedAt
             
             from Videos
                      left outer join User U on U.UserId = Videos.UserId
                      left outer join UserLikes UL on UL.VideoIdx = Videos.VideoIdx and UL.UserIdx = ?
                      left outer join UserSubscribes US on US.UserIdx = ? and U.UserIdx = US.ChannelUserIdx
-                    left outer join UserPlayList UP on UP.UserIdx = ? and UP.VideoIdx = Videos.VideoIdx
-                    left outer join UserWatchHistory UW on UW.UserIdx = ? and UW.VideoIdx = Videos.VideoIdx
+                     left outer join UserPlayList UP on UP.UserIdx = ? and UP.VideoIdx = Videos.VideoIdx
+                     left outer join UserWatchHistory UW on UW.UserIdx = ? and UW.VideoIdx = Videos.VideoIdx
             where Videos.VideoIdx = ?;
 `;
             const [videoInfo] = await connection.query(videoInfoQuery, [watchUserIdx,watchUserIdx,watchUserIdx,watchUserIdx,videoIdx]);
@@ -746,7 +761,7 @@ exports.postVideo = async function (req, res) {
                     playTime : '13:30',
                     ProfileUrl: 'https://firebasestorage.googleapis.com/v0/b/clone-e7f75.appspot.com/o/profile%2F%E1%84%86%E1%85%A7%E1%86%AF%E1%84%8E%E1%85%B5%20myeolchi.png?alt=media&token=8e32f5c8-4321-4b29-acfb-cff8353900cf',
                     ThumUrl: 'https://firebasestorage.googleapis.com/v0/b/clone-e7f75.appspot.com/o/thumnail%2Fsub)%20%E1%84%80%E1%85%B5%E1%84%80%E1%85%A1%E1%84%8C%E1%85%B5%E1%84%82%E1%85%B5%20-%20%E1%84%87%E1%85%A2%E1%86%A8%E1%84%89%E1%85%AE%20%E1%84%8B%E1%85%B5%E1%86%AF%E1%84%89%E1%85%A1%E1%86%BC%20%E1%84%87%E1%85%B3%E1%84%8B%E1%85%B5%E1%84%85%E1%85%A9%E1%84%80%E1%85%B3.png?alt=media&token=31a1280f-3996-4346-bdf6-8259adcbed74',
-                    CreateAt: '2020-07-18 18:09:55'
+                    CreateAt: '11일 전'
                 },
                 token: registrationToken
             };
@@ -788,9 +803,24 @@ const j = schedule.scheduleJob('*/20 * * * *',async function(){
                                                    ProfileUrl,
                                                    ThumUrl,
                                                    PlayTime,
-                                                   Videos.CreatedAt
+                                                   case
+                                                       when TIMESTAMPDIFF(SECOND, Videos.CreatedAt, CURRENT_TIMESTAMP) < 60
+                                                           then concat(TIMESTAMPDIFF(SECOND, Videos.CreatedAt, CURRENT_TIMESTAMP), '초 전')
+                                                       else case
+                                                                when TIMESTAMPDIFF(minute, Videos.CreatedAt, CURRENT_TIMESTAMP) < 60
+                                                                    then concat(TIMESTAMPDIFF(minute, Videos.CreatedAt, CURRENT_TIMESTAMP), '분 전')
+                                                                else case
+                                                                         when TIMESTAMPDIFF(HOUR, Videos.CreatedAt, CURRENT_TIMESTAMP) < 24
+                                                                             then concat(TIMESTAMPDIFF(HOUR, Videos.CreatedAt, CURRENT_TIMESTAMP), '시간 전')
+                                                                         else case
+                                                                                  when TIMESTAMPDIFF(day, Videos.CreatedAt, CURRENT_TIMESTAMP) < 30
+                                                                                      then concat(TIMESTAMPDIFF(day, Videos.CreatedAt, CURRENT_TIMESTAMP), '일 전')
+                                                                             end
+                                                                    end
+                                                           end
+                                                       end as CreateAt
                                             from Videos
-                                            left outer join User U on U.UserId = Videos.UserId
+                                                     left outer join User U on U.UserId = Videos.UserId
                                             where VideoIdx = ?;
                                             `;
             const [pushRecommendVideo] = await connection.query(pushRecommendVideoQuery,recommentVideoIdx);
