@@ -36,21 +36,11 @@ exports.getVideo = async function (req, res) {
     try {
         const connection = await pool.getConnection(async conn => conn);
         try {
+
             //최대 video 갯수 쿼리
             const countVideoQuery = `select count(VideoIdx) as videoCount from Videos ;`
             const [videoCount] = await connection.query(countVideoQuery);
             const maxListCount = videoCount[0].videoCount;
-            // 유효한 토큰 검사
-            let jwtDecode = jwt.verify(jwtoken, secret_config.jwtsecret);
-            const userIdx = jwtDecode.userIdx;
-            const userId = jwtDecode.userId;
-            const checkTokenValideQuery = `select exists(select UserIdx from User where UserIdx = ? and UserId = ?) as exist;`;
-            const [isValidUser] = await connection.query(checkTokenValideQuery, [userIdx, userId]);
-            if (!isValidUser[0].exist) {
-                connection.release();
-                return res.json(resFormat(false, 204, '유효하지않는 토큰입니다.'));
-            }
-
 
             //무한 스크롤를 위한 처리
             const temp = parseInt(queryPage % parseInt((maxListCount / 10) + 1))
@@ -60,7 +50,19 @@ exports.getVideo = async function (req, res) {
                 // 토큰이 없을때 랜덤 배열
                 videoArr = await getRandomArr(maxListCount);
                 //토큰이 있을때 추천 알고리즘
-                if(jwtoken){
+                if(jwtoken)
+                {
+                    // 유효한 토큰 검사
+                    let jwtDecode = jwt.verify(jwtoken, secret_config.jwtsecret);
+                    const userIdx = jwtDecode.userIdx;
+                    const userId = jwtDecode.userId;
+                    const checkTokenValideQuery = `select exists(select UserIdx from User where UserIdx = ? and UserId = ?) as exist;`;
+                    const [isValidUser] = await connection.query(checkTokenValideQuery, [userIdx, userId]);
+                    if (!isValidUser[0].exist) {
+                        connection.release();
+                        return res.json(resFormat(false, 204, '유효하지않는 토큰입니다.'));
+                    }
+
                     const getHistoryDataQuery = `
                     select UW.VideoIdx,
                            WatchCount,
@@ -85,6 +87,11 @@ exports.getVideo = async function (req, res) {
                         for (let i = 0;i<getCategoryVideo.length;i++){
                             tempArr[i] = getCategoryVideo[i].VideoIdx;
                         }
+                        //랜덤 배열 정렬
+                        tempArr.sort(function () {
+                            return Math.random() - Math.random();
+                        })
+
                         videoRecommendArr = videoRecommendArr.concat(tempArr);
                     }
                     videoArr = videoRecommendArr;
@@ -788,9 +795,9 @@ exports.postVideo = async function (req, res) {
  update : 2020.07.30
  한시간 간격으로 추천 영상 스캐줄러
  **/
-const j = schedule.scheduleJob('*/20 * * * *',async function(){
+const j = schedule.scheduleJob('*/30 * * * *',async function(){
     try{
-        var registrationToken = 'c0TMqyI3AMo:APA91bHkkU1U_G85c0rjY0yS1_bu7SmfKR_jQZ68yowPUGadKypxPjDfBq6hNBWuwb1ArDteodcW63EChvJ6_EGkRbysxQdbhRWyz8taFO2tlbVGFXUgfwZHi_EAAdKFahLfYObjtrU3';
+        var registrationToken = 'f-JIs_LqNj4:APA91bEMFh-fYMFkgJZfs475RYQG_y-dzJzK2yU7fmuJNE7o0F5jN3GycNMPfJFkSxBZu8fpdcMsdWUanqbjllYkhwBGLJ6bcMPv-MrtDoNdC4kOLk28y5RAImMyE8fuDtVZj8ZBKal1';
         const connection = await pool.getConnection(async conn => conn);
         try{
             const pushRecommendVideoQuery = `

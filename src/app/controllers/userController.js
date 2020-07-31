@@ -167,7 +167,7 @@ exports.getSubscribeData = async function (req, res){
                                                                              left outer join User U on UserSubscribes.ChannelUserIdx = U.UserIdx
                                                                              left outer join Videos V on U.UserId = V.UserId
                                                                              left outer join UserWatchHistory UW on UW.VideoIdx = V.VideoIdx
-                                                                    where UserSubscribes.UserIdx = ? and UW.WatchingTime != '00:00'
+                                                                    where UserSubscribes.UserIdx = ? and UW.WatchingTime != 0
                                                                     order by V.CreatedAt desc
                                                                     limit 10 offset ?;
                                                                     `;
@@ -191,7 +191,7 @@ exports.getSubscribeData = async function (req, res){
                                                                              left outer join User U on UserSubscribes.ChannelUserIdx = U.UserIdx
                                                                              left outer join Videos V on U.UserId = V.UserId
                                                                              left outer join UserWatchHistory UW on UW.VideoIdx = V.VideoIdx
-                                                                    where UserSubscribes.UserIdx = ? and UW.WatchingTime = '00:00'
+                                                                    where UserSubscribes.UserIdx = ? and UW.WatchingTime = 0
                                                                     order by V.CreatedAt desc
                                                                     limit 10 offset ?;
                                                                     `;
