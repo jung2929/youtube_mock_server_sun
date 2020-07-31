@@ -434,6 +434,7 @@ exports.getInbox = async function(req, res){
 exports.deleteInbox = async function(req, res){
     const jwtoken = req.headers['x-access-token'];
     const userIdx = req.params.userIdx;
+    const inboxIdx = req.params.inboxIdx;
     if (!validation.isValidePageIndex(userIdx)){
         return res.json(resFormat(false, 200, 'parameter 값은 1이상의 정수 값이어야 합니다.'));
     }
@@ -454,9 +455,16 @@ exports.deleteInbox = async function(req, res){
                 return res.json(resFormat(false, 203, '유효하지않는 토큰입니다.'));
             }
 
+            const getExistInboxQuery = `select exists(select UserInboxIdx from UserInbox where UserInboxIdx = ?) as exist;`;
+            const [getExistInbox] = connection.query(getExistInboxQuery,[inboxIdx]);
+            if(!getExistInbox[0].exist){
+                connection.release();
+                return res.json(resFormat(false, 204, '존재하지 않는 인덱스입니다.'));
+            }
+
             const deleteInboxQuery = `update UserInbox set IsDeleted='Y' where UserInboxIdx = ?;`;
             await connection.beginTransaction();
-            await connection.query(deleteInboxQuery,userIdx);
+            await connection.query(deleteInboxQuery,inboxIdx);
             await connection.commit();
 
             let responseData = resFormat(true,100,'수신함 삭제 성공');
@@ -507,11 +515,13 @@ exports.getWatched = async function(req, res){
                    V.UserId,
                    UserWatchHistory.VideoIdx,
                    V.TitleText,
+                   V.ThumUrl,
                    WatchingTime,
                    V.PlayTime
             from UserWatchHistory
-            left outer join Videos V on UserWatchHistory.VideoIdx = V.VideoIdx
-            where UserIdx = ? and UserWatchHistory.IsDeleted = 'N'
+                     left outer join Videos V on UserWatchHistory.VideoIdx = V.VideoIdx
+            where UserIdx = ?
+              and UserWatchHistory.IsDeleted = 'N'
             order by UserWatchHistory.UpdatedAt desc;
             `;
             const [getWatched] = await connection.query(getWatchedQuery,userIdx);
