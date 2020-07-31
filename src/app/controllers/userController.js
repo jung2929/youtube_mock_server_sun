@@ -456,7 +456,7 @@ exports.deleteInbox = async function(req, res){
             }
 
             const getExistInboxQuery = `select exists(select UserInboxIdx from UserInbox where UserInboxIdx = ?) as exist;`;
-            const [getExistInbox] = connection.query(getExistInboxQuery,[inboxIdx]);
+            const [getExistInbox] = await connection.query(getExistInboxQuery,inboxIdx);
             if(!getExistInbox[0].exist){
                 connection.release();
                 return res.json(resFormat(false, 204, '존재하지 않는 인덱스입니다.'));

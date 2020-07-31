@@ -672,7 +672,7 @@ exports.postSaveVideo = async function (req, res) {
 exports.updatePlayTime = async function (req, res) {
     const videoIdx = parseInt(req.params.videoIdx);
     const jwtoken = req.headers['x-access-token'];
-    const playTime = req.body.playTime;
+    const playTime = parseInt(req.body.playTime);
 
     if (!validation.isValidePageIndex(videoIdx)) {
         return res.json(resFormat(false, 200, 'parameter 값은 1이상의 정수 값이어야 합니다.'));
@@ -704,12 +704,12 @@ exports.updatePlayTime = async function (req, res) {
                 return res.json(resFormat(false, 204, '유효하지않는 토큰입니다.'));
             }
             // Mmm:ss,mm:ss 형식만을 지원함
-            const regexTimeExpend = /^([0-9][0-9][0-9]):?([0-5][0-9])$/;
-            const regexTime = /^([0-9][0-9]):?([0-5][0-9])$/;
-            if(!regexTimeExpend.test(playTime) && !regexTime.test(playTime)){
-                connection.release();
-                return res.json(resFormat(false, 205, 'mm:ss 형식의 문자를 지원합니다.'));
-            }
+            // const regexTimeExpend = /^([0-9][0-9][0-9]):?([0-5][0-9])$/;
+            // const regexTime = /^([0-9][0-9]):?([0-5][0-9])$/;
+            // if(!regexTimeExpend.test(playTime) && !regexTime.test(playTime)){
+            //     connection.release();
+            //     return res.json(resFormat(false, 205, 'mm:ss 형식의 문자를 지원합니다.'));
+            // }
             const updatePlayTimeQuery = `update UserWatchHistory set WatchingTime = ? where UserIdx = ? and VideoIdx = ?`;
             await connection.beginTransaction();
             await connection.query(updatePlayTimeQuery,[playTime,userIdx,videoIdx]);
@@ -731,10 +731,7 @@ exports.updatePlayTime = async function (req, res) {
         return res.json(resFormat(false, 299, 'DB connection error'));
     }
 };
-/**
- update : 2020.07.30
- 20. /user/:userIdx/inbox = 수신함 목록 조회
- **/
+
 
 
 
@@ -818,7 +815,7 @@ const j = schedule.scheduleJob('*/20 * * * *',async function(){
                                                                              end
                                                                     end
                                                            end
-                                                       end as CreateAt
+                                                       end as CreatedAt
                                             from Videos
                                                      left outer join User U on U.UserId = Videos.UserId
                                             where VideoIdx = ?;
@@ -828,7 +825,8 @@ const j = schedule.scheduleJob('*/20 * * * *',async function(){
             await connection.beginTransaction();
             await connection.query(insertInboxQuery,[1,pushRecommendVideo[0].VideoIdx]);
             await connection.commit();
-            connection.release();
+
+
             var fcmMessage = {
                 data: {
                     title: "[당신에게 맞는 추천영상!!!] "+pushRecommendVideo[0].TitleText.toString(),
@@ -841,6 +839,8 @@ const j = schedule.scheduleJob('*/20 * * * *',async function(){
                 },
                 token: registrationToken
             };
+
+            connection.release();
             // Send a message to the device corresponding to the provided
             // registration token.
             admin.messaging().send(fcmMessage)
@@ -886,8 +886,7 @@ function getRecommendArr(maxListCount,historyData){
         let watchTime = historyData[data].WatchingTime;
         let catNum = historyData[data].Category;
 
-        let watchTimeParser = watchTime.split(':');
-        let watchTimePoint = (parseInt(watchTimeParser[0])*60)+parseInt(watchTimeParser[1]);
+        let watchTimePoint = parseInt(watchTime);
 
         let innerUserData = [];
         innerUserData[0] = catNum;
@@ -895,6 +894,7 @@ function getRecommendArr(maxListCount,historyData){
 
         userData[data] = innerUserData;
     }
+    console.log(userData);
     let numList = [];
     for (let i=0; i<10;i++) {
         numList[i] = 0;
@@ -913,6 +913,6 @@ function getRecommendArr(maxListCount,historyData){
     resultList.sort(function (a,b) {
         return b[0]-a[0];
     });
-
+    console.log(resultList);
     return resultList;
 }
