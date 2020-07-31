@@ -368,6 +368,109 @@ exports.getSubscribeChannel = async function(req, res){
         return res.json(resFormat(false, 299, 'DB connection error'));
     }
 };
+/**
+ update : 2020.07.30
+ 20./user/:userIdx/inbox 수신함 API = 유저 수신함 조회
+ **/
+exports.getInbox = async function(req, res){
+    const jwtoken = req.headers['x-access-token'];
+    const userIdx = req.params.userIdx;
+    if (!validation.isValidePageIndex(userIdx)){
+        return res.json(resFormat(false, 200, 'parameter 값은 1이상의 정수 값이어야 합니다.'));
+    }
+    if(!jwtoken){
+        return res.json(resFormat(false, 202, '로그인후 사용가능한 기능입니다.'));
+    }
+    try{
+        const connection = await pool.getConnection(async conn => conn);
+        try{
+            // 유효한 토큰 검사
+            let jwtDecode = jwt.verify(jwtoken, secret_config.jwtsecret);
+            const userIdx = jwtDecode.userIdx;
+            const userId = jwtDecode.userId;
+            const checkTokenValideQuery = `select exists(select UserIdx from User where UserIdx = ? and UserId = ?) as exist;`;
+            const [isValidUser] = await connection.query(checkTokenValideQuery, [userIdx, userId]);
+            if (!isValidUser[0].exist) {
+                connection.release();
+                return res.json(resFormat(false, 203, '유효하지않는 토큰입니다.'));
+            }
+
+            const getInboxQuery = `
+            select UserInbox.UserInboxIdx,
+                   UserInbox.VideoIdx,
+                   V.TitleText,
+                   V.ThumUrl,
+                   V.CreatedAt
+            from UserInbox
+            left outer join Videos V on V.VideoIdx = UserInbox.VideoIdx
+            where UserIdx = ? and UserInbox.IsDeleted = 'N' ;
+            `;
+            const [getInbox] = await connection.query(getInboxQuery,userIdx);
+
+            let responseData = resFormat(true,100,'수신함 조회 성공');
+            responseData.result = getInbox;
+
+            connection.release();
+            return res.json(responseData);
+
+        }catch (err) {
+            logger.error(`App -  get user/:userIdx/inbox Query error\n: ${JSON.stringify(err)}`);
+            connection.release();
+            return res.json(resFormat(false, 290, 'get user/:userIdx/inbox query 중 오류가 발생하였습니다.'));
+        }
+    }catch (err) {
+        logger.error(`App - get user/:userIdx/inbox connection error\n: ${JSON.stringify(err)}`);
+        return res.json(resFormat(false, 299, 'DB connection error'));
+    }
+}
+/**
+ update : 2020.07.30
+ 24./user/:userIdx/inbox/:inboxIdx 수신함 API =  수신함 항목 삭제
+ **/
+exports.deleteInbox = async function(req, res){
+    const jwtoken = req.headers['x-access-token'];
+    const userIdx = req.params.userIdx;
+    if (!validation.isValidePageIndex(userIdx)){
+        return res.json(resFormat(false, 200, 'parameter 값은 1이상의 정수 값이어야 합니다.'));
+    }
+    if(!jwtoken){
+        return res.json(resFormat(false, 202, '로그인후 사용가능한 기능입니다.'));
+    }
+    try{
+        const connection = await pool.getConnection(async conn => conn);
+        try{
+            // 유효한 토큰 검사
+            let jwtDecode = jwt.verify(jwtoken, secret_config.jwtsecret);
+            const userIdx = jwtDecode.userIdx;
+            const userId = jwtDecode.userId;
+            const checkTokenValideQuery = `select exists(select UserIdx from User where UserIdx = ? and UserId = ?) as exist;`;
+            const [isValidUser] = await connection.query(checkTokenValideQuery, [userIdx, userId]);
+            if (!isValidUser[0].exist) {
+                connection.release();
+                return res.json(resFormat(false, 203, '유효하지않는 토큰입니다.'));
+            }
+
+            const deleteInboxQuery = `update UserInbox set IsDeleted='Y' where UserInboxIdx = ?;`;
+            await connection.beginTransaction();
+            await connection.query(deleteInboxQuery,userIdx);
+            await connection.commit();
+
+            let responseData = resFormat(true,100,'수신함 삭제 성공');
+            responseData.result = {IsDeleted:'Y'};
+
+            connection.release();
+            return res.json(responseData);
+
+        }catch (err) {
+            logger.error(`App -  delete user/:userIdx/inbox Query error\n: ${JSON.stringify(err)}`);
+            connection.release();
+            return res.json(resFormat(false, 290, 'delete user/:userIdx/inbox query 중 오류가 발생하였습니다.'));
+        }
+    }catch (err) {
+        logger.error(`App - delete user/:userIdx/inbox connection error\n: ${JSON.stringify(err)}`);
+        return res.json(resFormat(false, 299, 'DB connection error'));
+    }
+}
 
 
 /**

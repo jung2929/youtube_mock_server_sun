@@ -7,7 +7,8 @@ module.exports = function(app){
     app.get('/users/:userIdx/subscribe',user.getSubscribeData);
     app.get('/users/:userIdx/subscribe/profile',user.getSubscribeProfile);
     app.get('/users/:userIdx/subscribe/:channelIdx',user.getSubscribeChannel);
-
+    app.get('/user/:userIdx/inbox',user.getInbox);
+    app.delete('/user/:userIdx/inbox/:inboxIdx',user.deleteInbox);
     //test api for login
     app.route('/users').post(user.login);
 

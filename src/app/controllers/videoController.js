@@ -5,12 +5,10 @@ const validation = new validationFunctions.validation();
 const resFormat = require('../../../config/responseMessages');
 
 const jwt = require('jsonwebtoken');
-const regexEmail = require('regex-email');
-const crypto = require('crypto');
 const secret_config = require('../../../config/secret');
-const {google} = require('googleapis');
-const request = require('request');
-const moment = require('moment');
+const schedule = require('node-schedule');
+
+
 
 var admin = require('firebase-admin');
 var serviceAccount = require("../../../config/serviceAccountKey.json");
@@ -20,10 +18,10 @@ admin.initializeApp({
     databaseURL: "https://clone-e7f75.firebaseio.com"
 });
 
-
 const DEF_HOME_PAGE_INDEX = 1;
 let videoArr = [];
 let communityArr = [];
+let recommentVideoIdx = 1;
 
 /**
  update : 2020.07.23
@@ -59,29 +57,44 @@ exports.getVideo = async function (req, res) {
             let page = temp === 0 ? 3 : temp;
 
             if (page === DEF_HOME_PAGE_INDEX || videoArr.length <= 1) {
-                //토큰이 있을때 추천 알고리즘
+                // 토큰이 없을때 랜덤 배열
                 videoArr = await getRandomArr(maxListCount);
-                // if(jwtoken){
-                //     const getHistoryDataQuery = `
-                //     select UW.VideoIdx,
-                //            WatchCount,
-                //            WatchingTime,
-                //            V.Category,
-                //            VC.CatName
-                //     from UserWatchHistory as UW
-                //     left outer join Videos V on UW.VideoIdx = V.VideoIdx
-                //     left outer join VideoCategoryDef VC on V.Category = VC.CatIdx
-                //     where UserIdx = ?
-                //     order by WatchCount desc ;
-                // `;
-                //     const [getHistoryData] = await connection.query(getHistoryDataQuery,userIdx)
-                //     //todo
-                //     videoArr = await getRecommendArr(maxListCount,getHistoryData);
-                // }// 토큰이 없을때 랜덤 배열
-                // else{
-                //     videoArr = await getRandomArr(maxListCount);
-                // }
+                //토큰이 있을때 추천 알고리즘
+                if(jwtoken){
+                    const getHistoryDataQuery = `
+                    select UW.VideoIdx,
+                           WatchCount,
+                           WatchingTime,
+                           V.Category,
+                           VC.CatName
+                    from UserWatchHistory as UW
+                    left outer join Videos V on UW.VideoIdx = V.VideoIdx
+                    left outer join VideoCategoryDef VC on V.Category = VC.CatIdx
+                    where UserIdx = ?
+                    order by WatchCount desc ;
+                `;
+                    const [getHistoryData] = await connection.query(getHistoryDataQuery,userIdx)
+                    let recommendArr = await getRecommendArr(maxListCount,getHistoryData);
+                    const getCategoryVideoQuery = `select VideoIdx from Videos where Category = ?`
+
+                    let videoRecommendArr = [];
+                    for (let i=0;i<recommendArr.length;i++){
+                        const [getCategoryVideo] = await connection.query(getCategoryVideoQuery,[recommendArr[i][1]])
+
+                        let tempArr = [];
+                        for (let i = 0;i<getCategoryVideo.length;i++){
+                            tempArr[i] = getCategoryVideo[i].VideoIdx;
+                        }
+                        videoRecommendArr = videoRecommendArr.concat(tempArr);
+                    }
+                    videoArr = videoRecommendArr;
+                    console.log(videoArr);
+                    recommentVideoIdx = videoArr[0];
+                }
             }
+            //todo
+            // 추천 알고리즘 완성 git 하고 푸쉬해야함
+
             const videoListQuery = `
                 select VideoIdx,
                        Videos.UserId,
@@ -705,42 +718,118 @@ exports.updatePlayTime = async function (req, res) {
 };
 /**
  update : 2020.07.30
+ 20. /user/:userIdx/inbox = 수신함 목록 조회
+ **/
+
+
+
+/**
+ update : 2020.07.30
  23./videos = 비디오 업로드
  **/
 exports.postVideo = async function (req, res) {
     try{
-        var registrationToken = 'c0TMqyI3AMo:APA91bHkkU1U_G85c0rjY0yS1_bu7SmfKR_jQZ68yowPUGadKypxPjDfBq6hNBWuwb1ArDteodcW63EChvJ6_EGkRbysxQdbhRWyz8taFO2tlbVGFXUgfwZHi_EAAdKFahLfYObjtrU3';
+        const connection = await pool.getConnection(async conn => conn);
+        try{
+            const insertInboxQuery = `insert into UserInbox(UserIdx, VideoIdx) VALUES (?, ?);`;
+            await connection.beginTransaction();
+            await connection.query(insertInboxQuery,[13,11]);
+            await connection.commit();
 
-        var fcmMessage = {
-            data: {
-                title: 'sub) 기가지니 - 백수 일상 브이로그',
-                body: '멸치 myeolchi',
-                videoIdx: '11',
-                playTime : '13:30',
-                ProfileUrl: 'https://firebasestorage.googleapis.com/v0/b/clone-e7f75.appspot.com/o/profile%2F%E1%84%86%E1%85%A7%E1%86%AF%E1%84%8E%E1%85%B5%20myeolchi.png?alt=media&token=8e32f5c8-4321-4b29-acfb-cff8353900cf',
-                ThumUrl: 'https://firebasestorage.googleapis.com/v0/b/clone-e7f75.appspot.com/o/thumnail%2Fsub)%20%E1%84%80%E1%85%B5%E1%84%80%E1%85%A1%E1%84%8C%E1%85%B5%E1%84%82%E1%85%B5%20-%20%E1%84%87%E1%85%A2%E1%86%A8%E1%84%89%E1%85%AE%20%E1%84%8B%E1%85%B5%E1%86%AF%E1%84%89%E1%85%A1%E1%86%BC%20%E1%84%87%E1%85%B3%E1%84%8B%E1%85%B5%E1%84%85%E1%85%A9%E1%84%80%E1%85%B3.png?alt=media&token=31a1280f-3996-4346-bdf6-8259adcbed74',
-                CreateAt: '2020-07-18 18:09:55'
-            },
-            token: registrationToken
-        };
+            var registrationToken = 'c0TMqyI3AMo:APA91bHkkU1U_G85c0rjY0yS1_bu7SmfKR_jQZ68yowPUGadKypxPjDfBq6hNBWuwb1ArDteodcW63EChvJ6_EGkRbysxQdbhRWyz8taFO2tlbVGFXUgfwZHi_EAAdKFahLfYObjtrU3';
 
-        // Send a message to the device corresponding to the provided
-        // registration token.
-        admin.messaging().send(fcmMessage)
-            .then((response) => {
-                // Response is a message ID string.
-                console.log('Successfully sent message:', response);
-                return res.json(resFormat(true,100,'test success'));
-            })
-            .catch((error) => {
-                console.log('Error sending message:', error);
-                return res.json(resFormat(false,200,'test fail'));
-            });
+            var fcmMessage = {
+                data: {
+                    title: 'sub) 기가지니 - 백수 일상 브이로그',
+                    body: '멸치 myeolchi',
+                    videoIdx: '11',
+                    playTime : '13:30',
+                    ProfileUrl: 'https://firebasestorage.googleapis.com/v0/b/clone-e7f75.appspot.com/o/profile%2F%E1%84%86%E1%85%A7%E1%86%AF%E1%84%8E%E1%85%B5%20myeolchi.png?alt=media&token=8e32f5c8-4321-4b29-acfb-cff8353900cf',
+                    ThumUrl: 'https://firebasestorage.googleapis.com/v0/b/clone-e7f75.appspot.com/o/thumnail%2Fsub)%20%E1%84%80%E1%85%B5%E1%84%80%E1%85%A1%E1%84%8C%E1%85%B5%E1%84%82%E1%85%B5%20-%20%E1%84%87%E1%85%A2%E1%86%A8%E1%84%89%E1%85%AE%20%E1%84%8B%E1%85%B5%E1%86%AF%E1%84%89%E1%85%A1%E1%86%BC%20%E1%84%87%E1%85%B3%E1%84%8B%E1%85%B5%E1%84%85%E1%85%A9%E1%84%80%E1%85%B3.png?alt=media&token=31a1280f-3996-4346-bdf6-8259adcbed74',
+                    CreateAt: '2020-07-18 18:09:55'
+                },
+                token: registrationToken
+            };
+
+            // Send a message to the device corresponding to the provided
+            // registration token.
+            admin.messaging().send(fcmMessage)
+                .then((response) => {
+                    // Response is a message ID string.
+                    console.log('Successfully sent message:', response);
+                    return res.json(resFormat(true,100,'test success'));
+                })
+                .catch((error) => {
+                    console.log('Error sending message:', error);
+                    return res.json(resFormat(false,200,'test fail'));
+                });
+        }catch(err){
+            logger.error(`App - push /videos Query error\n: ${JSON.stringify(err)}`);
+            connection.release();
+        }
     }catch (err) {
         logger.error(`App - video upload test api connection error\n: ${JSON.stringify(err)}`);
         return res.json(resFormat(false, 299, 'video upload test api  connection error'));
     }
 };
+/**
+ update : 2020.07.30
+ 한시간 간격으로 추천 영상 스캐줄러
+ **/
+const j = schedule.scheduleJob('* */60 * * * *',async function(){
+    try{
+        var registrationToken = 'c0TMqyI3AMo:APA91bHkkU1U_G85c0rjY0yS1_bu7SmfKR_jQZ68yowPUGadKypxPjDfBq6hNBWuwb1ArDteodcW63EChvJ6_EGkRbysxQdbhRWyz8taFO2tlbVGFXUgfwZHi_EAAdKFahLfYObjtrU3';
+        const connection = await pool.getConnection(async conn => conn);
+        try{
+            const pushRecommendVideoQuery = `
+                                            select VideoIdx,
+                                                   Videos.UserId,
+                                                   TitleText,
+                                                   ProfileUrl,
+                                                   ThumUrl,
+                                                   PlayTime,
+                                                   Videos.CreatedAt
+                                            from Videos
+                                            left outer join User U on U.UserId = Videos.UserId
+                                            where VideoIdx = ?;
+                                            `;
+            const [pushRecommendVideo] = await connection.query(pushRecommendVideoQuery,recommentVideoIdx);
+            const insertInboxQuery = `insert into UserInbox(UserIdx, VideoIdx) VALUES (?, ?);`;
+            await connection.beginTransaction();
+            await connection.query(insertInboxQuery,[1,pushRecommendVideo[0].VideoIdx]);
+            await connection.commit();
+            connection.release();
+            var fcmMessage = {
+                data: {
+                    title: "[당신에게 맞는 추천영상!!!] "+pushRecommendVideo[0].TitleText.toString(),
+                    body: pushRecommendVideo[0].UserId.toString(),
+                    videoIdx: pushRecommendVideo[0].VideoIdx.toString(),
+                    playTime : pushRecommendVideo[0].PlayTime.toString(),
+                    ProfileUrl: pushRecommendVideo[0].ProfileUrl.toString(),
+                    ThumUrl: pushRecommendVideo[0].ThumUrl.toString(),
+                    CreateAt: pushRecommendVideo[0].CreatedAt.toString()
+                },
+                token: registrationToken
+            };
+            // Send a message to the device corresponding to the provided
+            // registration token.
+            admin.messaging().send(fcmMessage)
+                .then((response) => {
+                    console.log('Successfully sent message:', response);
+                })
+                .catch((error) => {
+                    console.log('Error sending message:', error);
+                });
+
+        }catch(err){
+            logger.error(`App - push /videos Query error\n: ${JSON.stringify(err)}`);
+            connection.release();
+        }
+    }catch (err) {
+        logger.error(`App - push /videos connection error\n: ${JSON.stringify(err)}`);
+    }
+});
+
 
 
 // video random 배열 함수
@@ -776,7 +865,6 @@ function getRecommendArr(maxListCount,historyData){
 
         userData[data] = innerUserData;
     }
-    console.log(userData);
     let numList = [];
     for (let i=0; i<10;i++) {
         numList[i] = 0;
@@ -792,6 +880,9 @@ function getRecommendArr(maxListCount,historyData){
         innerList[1] = i+1;
         resultList[i] = innerList;
     }
-    console.log(resultList);
+    resultList.sort(function (a,b) {
+        return b[0]-a[0];
+    });
+
     return resultList;
 }
