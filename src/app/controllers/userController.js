@@ -399,11 +399,14 @@ exports.getInbox = async function(req, res){
             select UserInbox.UserInboxIdx,
                    UserInbox.VideoIdx,
                    V.TitleText,
+                   U.ProfileUrl,
                    V.ThumUrl,
                    V.CreatedAt
             from UserInbox
-            left outer join Videos V on V.VideoIdx = UserInbox.VideoIdx
-            where UserIdx = ? and UserInbox.IsDeleted = 'N' ;
+                     left outer join Videos V on V.VideoIdx = UserInbox.VideoIdx
+                    left outer join User U on V.userId = U.UserId
+            where UserInbox.UserIdx = ?
+              and UserInbox.IsDeleted = 'N';
             `;
             const [getInbox] = await connection.query(getInboxQuery,userIdx);
 
