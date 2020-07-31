@@ -398,6 +398,7 @@ exports.getInbox = async function(req, res){
             const getInboxQuery = `
             select UserInbox.UserInboxIdx,
                    UserInbox.VideoIdx,
+                   V.UserId,
                    V.TitleText,
                    U.ProfileUrl,
                    V.ThumUrl,
@@ -471,6 +472,112 @@ exports.deleteInbox = async function(req, res){
         }
     }catch (err) {
         logger.error(`App - delete user/:userIdx/inbox connection error\n: ${JSON.stringify(err)}`);
+        return res.json(resFormat(false, 299, 'DB connection error'));
+    }
+}
+/**
+ update : 2020.07.31
+ 25./user/:userIdx/watched  API =  최근 시청기록 조회
+ **/
+exports.getWatched = async function(req, res){
+    const jwtoken = req.headers['x-access-token'];
+    const userIdx = req.params.userIdx;
+    if (!validation.isValidePageIndex(userIdx)){
+        return res.json(resFormat(false, 200, 'parameter 값은 1이상의 정수 값이어야 합니다.'));
+    }
+    if(!jwtoken){
+        return res.json(resFormat(false, 202, '로그인후 사용가능한 기능입니다.'));
+    }
+    try{
+        const connection = await pool.getConnection(async conn => conn);
+        try{
+            // 유효한 토큰 검사
+            let jwtDecode = jwt.verify(jwtoken, secret_config.jwtsecret);
+            const userIdx = jwtDecode.userIdx;
+            const userId = jwtDecode.userId;
+            const checkTokenValideQuery = `select exists(select UserIdx from User where UserIdx = ? and UserId = ?) as exist;`;
+            const [isValidUser] = await connection.query(checkTokenValideQuery, [userIdx, userId]);
+            if (!isValidUser[0].exist) {
+                connection.release();
+                return res.json(resFormat(false, 203, '유효하지않는 토큰입니다.'));
+            }
+
+            const getWatchedQuery = `
+            select WatchHistoryIdx,
+                   V.UserId,
+                   UserWatchHistory.VideoIdx,
+                   V.TitleText,
+                   WatchingTime,
+                   V.PlayTime
+            from UserWatchHistory
+            left outer join Videos V on UserWatchHistory.VideoIdx = V.VideoIdx
+            where UserIdx = ? and UserWatchHistory.IsDeleted = 'N'
+            order by UserWatchHistory.UpdatedAt desc;
+            `;
+            const [getWatched] = await connection.query(getWatchedQuery,userIdx);
+
+            let responseData = resFormat(true,100,'최근 본 기록 조회 성공');
+            responseData.result = getWatched;
+
+            connection.release();
+            return res.json(responseData);
+        }catch (err) {
+            logger.error(`App -  get user/:userIdx/watched Query error\n: ${JSON.stringify(err)}`);
+            connection.release();
+            return res.json(resFormat(false, 290, 'get user/:userIdx/watched query 중 오류가 발생하였습니다.'));
+        }
+    }catch (err) {
+        logger.error(`App - get user/:userIdx/watched connection error\n: ${JSON.stringify(err)}`);
+        return res.json(resFormat(false, 299, 'DB connection error'));
+    }
+}
+/**
+ update : 2020.07.31
+ 26./user/:userIdx/watched  API =  최근 시청기록 삭제
+ **/
+exports.deleteWatched = async function(req, res){
+    const jwtoken = req.headers['x-access-token'];
+    const userIdx = req.params.userIdx;
+    const watchedIdx = req.params.watchedIdx;
+    if (!validation.isValidePageIndex(userIdx)){
+        return res.json(resFormat(false, 200, 'parameter 값은 1이상의 정수 값이어야 합니다.'));
+    }
+    if(!jwtoken){
+        return res.json(resFormat(false, 202, '로그인후 사용가능한 기능입니다.'));
+    }
+    try{
+        const connection = await pool.getConnection(async conn => conn);
+        try{
+            // 유효한 토큰 검사
+            let jwtDecode = jwt.verify(jwtoken, secret_config.jwtsecret);
+            const userIdx = jwtDecode.userIdx;
+            const userId = jwtDecode.userId;
+            const checkTokenValideQuery = `select exists(select UserIdx from User where UserIdx = ? and UserId = ?) as exist;`;
+            const [isValidUser] = await connection.query(checkTokenValideQuery, [userIdx, userId]);
+            if (!isValidUser[0].exist) {
+                connection.release();
+                return res.json(resFormat(false, 203, '유효하지않는 토큰입니다.'));
+            }
+
+            const deleteWatchedQuery = `
+            update UserWatchHistory set IsDeleted='Y' where WatchHistoryIdx = ?;
+            `;
+            await connection.beginTransaction();
+            await connection.query(deleteWatchedQuery,watchedIdx);
+            await connection.commit();
+
+            let responseData = resFormat(true,100,'최근 본 기록 삭제 성공');
+            responseData.result = {isDeleted : 'Y'};
+
+            connection.release();
+            return res.json(responseData);
+        }catch (err) {
+            logger.error(`App -  delete user/:userIdx/watched Query error\n: ${JSON.stringify(err)}`);
+            connection.release();
+            return res.json(resFormat(false, 290, 'delete user/:userIdx/watched query 중 오류가 발생하였습니다.'));
+        }
+    }catch (err) {
+        logger.error(`App - delete user/:userIdx/watched connection error\n: ${JSON.stringify(err)}`);
         return res.json(resFormat(false, 299, 'DB connection error'));
     }
 }

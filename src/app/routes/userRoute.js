@@ -9,6 +9,9 @@ module.exports = function(app){
     app.get('/users/:userIdx/subscribe/:channelIdx',user.getSubscribeChannel);
     app.get('/user/:userIdx/inbox',user.getInbox);
     app.delete('/user/:userIdx/inbox/:inboxIdx',user.deleteInbox);
+    app.get('/user/:userIdx/watched',user.getWatched);
+    app.delete('/user/:userIdx/watched/:watchedIdx',user.deleteWatched);
+
     //test api for login
     app.route('/users').post(user.login);
 

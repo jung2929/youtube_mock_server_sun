@@ -776,7 +776,7 @@ exports.postVideo = async function (req, res) {
  update : 2020.07.30
  한시간 간격으로 추천 영상 스캐줄러
  **/
-const j = schedule.scheduleJob('* */60 * * * *',async function(){
+const j = schedule.scheduleJob('*/20 * * * *',async function(){
     try{
         var registrationToken = 'c0TMqyI3AMo:APA91bHkkU1U_G85c0rjY0yS1_bu7SmfKR_jQZ68yowPUGadKypxPjDfBq6hNBWuwb1ArDteodcW63EChvJ6_EGkRbysxQdbhRWyz8taFO2tlbVGFXUgfwZHi_EAAdKFahLfYObjtrU3';
         const connection = await pool.getConnection(async conn => conn);
